@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Sparkles,
   CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import type { BloggerBlog } from '@/src/server/bloggerService';
 
@@ -22,6 +23,7 @@ interface HeaderProps {
   isLoadingBlogs: boolean;
   onOpenSettings: () => void;
   onOpenGuide: () => void;
+  onOpenHistory?: () => void;
   onLogout: () => void;
 }
 
@@ -34,6 +36,7 @@ export function Header({
   isLoadingBlogs,
   onOpenSettings,
   onOpenGuide,
+  onOpenHistory,
   onLogout,
 }: HeaderProps) {
   const currentBlog = blogs.find((b) => b.id === selectedBlogId);
@@ -56,6 +59,16 @@ export function Header({
           </div>
 
           <div className="flex items-center space-x-1">
+            {user && onOpenHistory && (
+              <button
+                onClick={onOpenHistory}
+                className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                title="Published Post History (Firestore)"
+                aria-label="Post History"
+              >
+                <Clock className="w-4.5 h-4.5 text-orange-600" />
+              </button>
+            )}
             <button
               onClick={onOpenSettings}
               className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"

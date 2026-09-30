@@ -7,6 +7,11 @@ import {
   googleSignIn,
   logout,
   getAccessToken,
+  savePublishedPost,
+  fetchPublishedPosts,
+  syncUserProfile,
+  loadUserProfile,
+  type StoredPublishedPost,
 } from '@/src/lib/firebase';
 import type { BloggerBlog } from '@/src/server/bloggerService';
 import { DEFAULT_MASTER_TEMPLATE } from '@/src/templates/BloggerPostTemplate';
@@ -22,6 +27,7 @@ import { TemplateSettingsModal } from '@/components/TemplateSettingsModal';
 import { PublishProgressModal } from '@/components/PublishProgressModal';
 import { SuccessScreen, type PublishedPostData } from '@/components/SuccessScreen';
 import { SetupGuideModal } from '@/components/SetupGuideModal';
+import { PostHistoryModal } from '@/components/PostHistoryModal';
 import { AlertCircle } from 'lucide-react';
 
 const STORAGE_KEY_BLOG_ID = 'blogger_auto_publisher_blog_id';
@@ -70,6 +76,24 @@ export default function Home() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // Firestore post history state
+  const [postHistory, setPostHistory] = useState<StoredPublishedPost[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Load history from Firestore
+  const loadHistory = useCallback(async (userId: string) => {
+    setIsLoadingHistory(true);
+    try {
+      const items = await fetchPublishedPosts(userId);
+      setPostHistory(items);
+    } catch (err) {
+      console.warn('Could not load history from Firestore:', err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, []);
 
   // Publishing state
   const [isPublishing, setIsPublishing] = useState(false);
@@ -138,14 +162,30 @@ export default function Home() {
         setUser(authedUser);
         setIsAuthChecking(false);
         loadBlogs(token);
+        loadHistory(authedUser.uid);
+        // Sync user profile to Firestore
+        syncUserProfile({
+          userId: authedUser.uid,
+          email: authedUser.email || '',
+          displayName: authedUser.displayName || undefined,
+        }).catch(() => {});
+        // Check saved default blog from Firestore
+        loadUserProfile(authedUser.uid)
+          .then((prof) => {
+            if (prof?.defaultBlogId) {
+              setSelectedBlogId((curr) => curr || prof.defaultBlogId || '');
+            }
+          })
+          .catch(() => {});
       },
       () => {
         setUser(null);
         setIsAuthChecking(false);
+        setPostHistory([]);
       }
     );
     return () => unsubscribe();
-  }, [loadBlogs]);
+  }, [loadBlogs, loadHistory]);
 
   // Handle Google Sign In
   const handleSignIn = async () => {
@@ -181,6 +221,13 @@ export default function Home() {
       localStorage.setItem(STORAGE_KEY_BLOG_ID, blogId);
     } catch {
       // ignore
+    }
+    if (user) {
+      syncUserProfile({
+        userId: user.uid,
+        email: user.email || '',
+        defaultBlogId: blogId,
+      }).catch(() => {});
     }
   };
 
@@ -268,7 +315,7 @@ export default function Home() {
       }
 
       // Successful publish
-      setPublishedPost({
+      const newPostData = {
         id: data.post.id,
         blogId: data.post.blogId,
         title: data.post.title,
@@ -277,7 +324,27 @@ export default function Home() {
         published: data.post.published,
         labels: data.post.labels,
         imageUrl: activeMainImageSrc,
-      });
+      };
+      setPublishedPost(newPostData);
+
+      // Save to Firestore history
+      if (user) {
+        const historyRecord: StoredPublishedPost = {
+          id: data.post.id,
+          userId: user.uid,
+          blogId: data.post.blogId,
+          title: data.post.title,
+          caption: caption.trim() || undefined,
+          url: data.post.url,
+          thumbnailUrl: data.post.thumbnailUrl || activeMainImageSrc,
+          labels: data.post.labels || labels.trim() || undefined,
+          publishedAt: new Date().toISOString(),
+        };
+        savePublishedPost(historyRecord).catch((err) =>
+          console.warn('Firestore history save notice:', err)
+        );
+        setPostHistory((prev) => [historyRecord, ...prev.filter((p) => p.id !== historyRecord.id)]);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Publish failed. Please try again.';
       setPublishError(msg);
@@ -311,6 +378,7 @@ export default function Home() {
         isLoadingBlogs={isLoadingBlogs}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenGuide={() => setIsGuideOpen(true)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
         onLogout={handleLogout}
       />
 
@@ -446,6 +514,18 @@ export default function Home() {
       <PublishProgressModal
         isOpen={isPublishing}
         step={publishStep}
+        blogName={selectedBlog?.name}
+      />
+
+      {/* Published Post History Modal (Firestore) */}
+      <PostHistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        posts={postHistory}
+        isLoading={isLoadingHistory}
+        onRefresh={() => {
+          if (user) loadHistory(user.uid);
+        }}
         blogName={selectedBlog?.name}
       />
     </div>

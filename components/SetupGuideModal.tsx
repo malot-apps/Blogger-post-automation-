@@ -98,6 +98,17 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
             </p>
           </div>
 
+          {/* Production Domain Notice */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+            <h4 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>Production Domain &amp; Auth</span>
+            </h4>
+            <p className="text-slate-600 leading-relaxed">
+              Authorized production domain: <code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded font-mono text-[11px]">blogger-post-automation.vercel.app</code>. Both popup and seamless redirect authentication are supported on Android Chrome.
+            </p>
+          </div>
+
           {/* Template Placeholders */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
             <h4 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
