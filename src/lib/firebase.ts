@@ -357,10 +357,10 @@ export async function syncUserProfile(profile: StoredUserProfile): Promise<void>
     const ref = doc(db, 'users', profile.userId);
     const sanitized: Record<string, string> = {
       userId: profile.userId,
-      email: profile.email,
     };
-    if (profile.displayName) sanitized.displayName = profile.displayName.slice(0, 256);
-    if (profile.defaultBlogId) sanitized.defaultBlogId = profile.defaultBlogId.slice(0, 128);
+    if (profile.email) sanitized.email = String(profile.email).slice(0, 256);
+    if (profile.displayName) sanitized.displayName = String(profile.displayName).slice(0, 256);
+    if (profile.defaultBlogId) sanitized.defaultBlogId = String(profile.defaultBlogId).slice(0, 128);
     sanitized.updatedAt = new Date().toISOString();
 
     await setDoc(ref, sanitized, { merge: true });
@@ -394,16 +394,21 @@ export async function savePublishedPost(post: StoredPublishedPost): Promise<void
   try {
     const ref = doc(db, 'users', post.userId, 'posts', post.id);
     const payload: Record<string, string> = {
-      id: post.id,
-      userId: post.userId,
-      blogId: post.blogId,
-      title: post.title.slice(0, 300),
-      url: post.url.slice(0, 1000),
+      id: String(post.id),
+      userId: String(post.userId),
+      blogId: String(post.blogId),
+      title: String(post.title || '').slice(0, 300),
+      url: String(post.url || '').slice(0, 1000),
       publishedAt: post.publishedAt || new Date().toISOString(),
     };
-    if (post.caption) payload.caption = post.caption.slice(0, 5000);
-    if (post.thumbnailUrl) payload.thumbnailUrl = post.thumbnailUrl.slice(0, 2048);
-    if (post.labels) payload.labels = post.labels.slice(0, 500);
+    if (post.caption) payload.caption = String(post.caption).slice(0, 5000);
+    if (post.thumbnailUrl) payload.thumbnailUrl = String(post.thumbnailUrl).slice(0, 2048);
+    if (post.labels) {
+      const labelsStr = Array.isArray(post.labels)
+        ? (post.labels as unknown as string[]).join(', ')
+        : String(post.labels);
+      payload.labels = labelsStr.slice(0, 500);
+    }
 
     await setDoc(ref, payload);
   } catch (error) {
