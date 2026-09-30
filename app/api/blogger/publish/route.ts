@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAndPublishBloggerPost } from '@/src/server/bloggerService';
+import { fetchUserBlogs, createAndPublishBloggerPost } from '@/src/server/bloggerService';
 import { renderTemplate } from '@/src/server/templateService';
 import { generateTitleFromCaption } from '@/src/lib/titleGenerator';
 
@@ -18,18 +18,23 @@ function isValidImageUrl(url: string): boolean {
 
 export async function POST(req: NextRequest) {
   try {
+    let token: string | null = null;
+
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Authentication required. Please sign in with Google.' },
-        { status: 401 }
-      );
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.replace('Bearer ', '').trim();
     }
 
-    const token = authHeader.replace('Bearer ', '').trim();
+    if (!token) {
+      const cookieToken = req.cookies.get('blogger_access_token')?.value;
+      if (cookieToken) {
+        token = cookieToken.trim();
+      }
+    }
+
     if (!token) {
       return NextResponse.json(
-        { error: 'Valid Blogger access token is required.' },
+        { error: 'Authentication required. Please sign in with Google.' },
         { status: 401 }
       );
     }
@@ -44,6 +49,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Step 2: Strict Multi-User Isolation Check - Verify that the blog belongs to the authenticated user
+    const userBlogs = await fetchUserBlogs(token);
+    const targetBlog = userBlogs.find((b) => b.id === blogId);
+    if (!targetBlog) {
+      return NextResponse.json(
+        { error: 'Forbidden: You do not have permission to publish to this Blogger blog.' },
+        { status: 403 }
+      );
+    }
+
+    // Step 3: Validate image
     if (!imageUrl || typeof imageUrl !== 'string') {
       return NextResponse.json(
         { error: 'Please select or upload a main image for the post.' },
@@ -58,6 +74,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Step 4: Validate caption
     if (!caption || typeof caption !== 'string' || caption.trim().length === 0) {
       return NextResponse.json(
         { error: 'Please enter a caption for your post.' },
@@ -93,7 +110,7 @@ export async function POST(req: NextRequest) {
       effectiveThumbnailUrl = thumbnailUrl.trim();
     }
 
-    // Injects all dynamic variables into the master HTML template before the API call
+    // Step 5 & 6: Render /templates/blogger-post-template.html with all 5 dynamic placeholders
     const postHtml = renderTemplate(customTemplate, {
       title: finalTitle,
       imageUrl: imageUrl.trim(),
@@ -101,7 +118,7 @@ export async function POST(req: NextRequest) {
       caption: caption.trim(),
     });
 
-    // Call Blogger API v3 to create and publish post
+    // Step 7 & 8: Call Blogger API v3 to create and publish post to THAT USER's selected blog
     const publishedPost = await createAndPublishBloggerPost(token, {
       blogId,
       title: finalTitle,
@@ -110,6 +127,7 @@ export async function POST(req: NextRequest) {
       isDraft: Boolean(isDraft),
     });
 
+    // Step 9: Return the real published URL
     return NextResponse.json({
       success: true,
       post: {
@@ -126,6 +144,7 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     console.error('Publishing error:', error);
     const message = error instanceof Error ? error.message : 'Failed to publish to Blogger';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message.includes('expired') || message.includes('revoked') ? 401 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

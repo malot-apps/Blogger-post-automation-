@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import type { User } from 'firebase/auth';
 import {
   initAuth,
@@ -28,10 +29,10 @@ import { PublishProgressModal } from '@/components/PublishProgressModal';
 import { SuccessScreen, type PublishedPostData } from '@/components/SuccessScreen';
 import { SetupGuideModal } from '@/components/SetupGuideModal';
 import { PostHistoryModal } from '@/components/PostHistoryModal';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Shield, Lock, Eye, ExternalLink, HelpCircle } from 'lucide-react';
 
-const STORAGE_KEY_BLOG_ID = 'blogger_auto_publisher_blog_id';
 const STORAGE_KEY_TEMPLATE = 'blogger_auto_publisher_template';
+const getBlogStorageKey = (uid: string) => `blogger_user_selected_blog_${uid}`;
 
 export default function Home() {
   // Auth state
@@ -40,14 +41,9 @@ export default function Home() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Blogger blogs state
+  // Blogger blogs state (strictly isolated per user)
   const [blogs, setBlogs] = useState<BloggerBlog[]>([]);
-  const [selectedBlogId, setSelectedBlogId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(STORAGE_KEY_BLOG_ID) || '';
-    }
-    return '';
-  });
+  const [selectedBlogId, setSelectedBlogId] = useState<string>('');
   const [isLoadingBlogs, setIsLoadingBlogs] = useState(false);
   const [blogsError, setBlogsError] = useState<string | null>(null);
 
@@ -78,7 +74,7 @@ export default function Home() {
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  // Firestore post history state
+  // Firestore post history state (strictly isolated per user)
   const [postHistory, setPostHistory] = useState<StoredPublishedPost[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
@@ -117,8 +113,8 @@ export default function Home() {
     }
   }, []);
 
-  // Fetch blogs from API
-  const loadBlogs = useCallback(async (token: string) => {
+  // Fetch blogs from API using the authenticated user's session
+  const loadBlogs = useCallback(async (token: string, currentUserId?: string) => {
     setIsLoadingBlogs(true);
     setBlogsError(null);
     try {
@@ -136,16 +132,25 @@ export default function Home() {
       setBlogs(blogList);
 
       if (blogList.length > 0) {
-        const savedId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_BLOG_ID) : null;
-        const exists = blogList.some((b) => b.id === savedId);
-        if (savedId && exists) {
-          setSelectedBlogId(savedId);
-        } else {
-          setSelectedBlogId(blogList[0].id);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(STORAGE_KEY_BLOG_ID, blogList[0].id);
+        let preferredId = '';
+        if (currentUserId && typeof window !== 'undefined') {
+          const userKey = getBlogStorageKey(currentUserId);
+          const savedId = localStorage.getItem(userKey);
+          if (savedId && blogList.some((b) => b.id === savedId)) {
+            preferredId = savedId;
           }
         }
+
+        if (!preferredId) {
+          preferredId = blogList[0].id;
+        }
+
+        setSelectedBlogId(preferredId);
+        if (currentUserId && typeof window !== 'undefined') {
+          localStorage.setItem(getBlogStorageKey(currentUserId), preferredId);
+        }
+      } else {
+        setSelectedBlogId('');
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error fetching blogs';
@@ -161,14 +166,16 @@ export default function Home() {
       (authedUser, token) => {
         setUser(authedUser);
         setIsAuthChecking(false);
-        loadBlogs(token);
+        loadBlogs(token, authedUser.uid);
         loadHistory(authedUser.uid);
+
         // Sync user profile to Firestore
         syncUserProfile({
           userId: authedUser.uid,
           email: authedUser.email || '',
           displayName: authedUser.displayName || undefined,
         }).catch(() => {});
+
         // Check saved default blog from Firestore
         loadUserProfile(authedUser.uid)
           .then((prof) => {
@@ -181,7 +188,10 @@ export default function Home() {
       () => {
         setUser(null);
         setIsAuthChecking(false);
+        setBlogs([]);
+        setSelectedBlogId('');
         setPostHistory([]);
+        setPublishedPost(null);
       }
     );
     return () => unsubscribe();
@@ -195,7 +205,7 @@ export default function Home() {
       const result = await googleSignIn();
       if (result) {
         setUser(result.user);
-        await loadBlogs(result.accessToken);
+        await loadBlogs(result.accessToken, result.user.uid);
       }
     } catch (err: unknown) {
       console.error(err);
@@ -206,23 +216,32 @@ export default function Home() {
     }
   };
 
-  // Handle Sign out
+  // Handle Sign out (Strict Session Cleanup)
   const handleLogout = async () => {
     await logout();
     setUser(null);
     setBlogs([]);
     setSelectedBlogId('');
+    setPostHistory([]);
+    setPublishedPost(null);
+    setMainImageResult(null);
+    setMainImageUrlOverride(null);
+    setThumbnailResult(null);
+    setThumbnailUrlOverride(null);
+    setCaption('');
+    setTitle('');
+    setLabels('');
   };
 
-  // Blog select handler
+  // Blog select handler (stores per-user preference)
   const handleSelectBlog = (blogId: string) => {
     setSelectedBlogId(blogId);
-    try {
-      localStorage.setItem(STORAGE_KEY_BLOG_ID, blogId);
-    } catch {
-      // ignore
-    }
-    if (user) {
+    if (user && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(getBlogStorageKey(user.uid), blogId);
+      } catch {
+        // ignore
+      }
       syncUserProfile({
         userId: user.uid,
         email: user.email || '',
@@ -244,8 +263,8 @@ export default function Home() {
   // Refresh blogs
   const handleRefreshBlogs = async () => {
     const token = await getAccessToken();
-    if (token) {
-      await loadBlogs(token);
+    if (token && user) {
+      await loadBlogs(token, user.uid);
     } else {
       setAuthError('Session expired. Please sign in again.');
     }
@@ -327,7 +346,7 @@ export default function Home() {
       };
       setPublishedPost(newPostData);
 
-      // Save to Firestore history
+      // Save to Firestore history (strictly user-isolated)
       if (user) {
         const historyRecord: StoredPublishedPost = {
           id: data.post.id,
@@ -363,12 +382,11 @@ export default function Home() {
     setTitle('');
     setLabels('');
     setPublishedPost(null);
-    setPublishError(null);
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800 antialiased selection:bg-orange-500 selection:text-white pb-12">
-      {/* Top Header */}
+    <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800 antialiased selection:bg-orange-500 selection:text-white">
+      {/* Sticky Top Header */}
       <Header
         user={user}
         blogs={blogs}
@@ -383,21 +401,79 @@ export default function Home() {
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-xl w-full mx-auto px-4 py-4 sm:py-6">
-        {/* Loading Auth State */}
+      <main className="flex-1 max-w-xl w-full mx-auto p-4 sm:p-5">
         {isAuthChecking ? (
-          <div className="py-20 flex flex-col items-center justify-center space-y-3">
+          <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-3">
             <div className="w-10 h-10 border-3 border-orange-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs text-slate-500 font-medium">Checking Blogger connection...</p>
+            <p className="text-xs font-medium text-slate-500">Initializing session...</p>
           </div>
         ) : !user ? (
-          /* Sign-in prompt */
-          <div className="py-4 sm:py-8">
+          /* Public Unauthenticated State */
+          <div className="space-y-6">
             <AuthCard
               onSignIn={handleSignIn}
               isLoading={isSigningIn}
               error={authError}
             />
+
+            {/* Public Overview & OAuth Transparency Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 space-y-4 text-left">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                  <Shield className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">How Blogger Auto Publisher Works</h3>
+                  <p className="text-xs text-slate-500">Public Multi-User &amp; Google Data Privacy</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 text-xs text-slate-600">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 space-y-1">
+                  <p className="font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-orange-600" />
+                    <span>What Google Data is Accessed</span>
+                  </p>
+                  <p className="leading-relaxed">
+                    Only your email (for account identification) and Blogger API scope (<code className="font-mono text-[10px] text-orange-700 bg-white px-1 py-0.5 rounded border border-slate-200">https://www.googleapis.com/auth/blogger</code>) to retrieve your blogs and publish articles you approve.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 space-y-1">
+                  <p className="font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Eye className="w-3.5 h-3.5 text-orange-600" />
+                    <span>Strict Multi-User Isolation</span>
+                  </p>
+                  <p className="leading-relaxed">
+                    User sessions, access tokens, blog selections, and post histories are strictly isolated per account. The backend validates blog ownership before publishing.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 space-y-1">
+                  <p className="font-semibold text-slate-800 flex items-center gap-1.5">
+                    <HelpCircle className="w-3.5 h-3.5 text-orange-600" />
+                    <span>Revoke Access Anytime</span>
+                  </p>
+                  <p className="leading-relaxed">
+                    You can sign out at any time or revoke permissions directly from{' '}
+                    <a
+                      href="https://myaccount.google.com/permissions"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-orange-600 underline font-medium inline-flex items-center"
+                    >
+                      Google Security Settings
+                      <ExternalLink className="w-2.5 h-2.5 ml-0.5" />
+                    </a>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <span>Developer Contact: <a href="mailto:tonmoymir9@gmail.com" className="text-orange-600 underline font-medium">tonmoymir9@gmail.com</a></span>
+                <Link href="/privacy" className="text-orange-600 underline font-medium">Read Privacy Policy</Link>
+              </div>
+            </div>
           </div>
         ) : publishedPost ? (
           /* Post Published Success Screen */
@@ -479,6 +555,30 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Public Footer */}
+      <footer className="mt-auto py-5 border-t border-slate-200 bg-white/70 text-center text-xs text-slate-500">
+        <div className="max-w-xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div>
+            <span>© 2026 Blogger Auto Publisher</span> •{' '}
+            <span className="font-mono text-[11px] text-slate-600">blogger-post-automation.vercel.app</span>
+          </div>
+          <div className="flex items-center space-x-3">
+            <Link href="/privacy" className="hover:text-orange-600 underline">Privacy Policy</Link>
+            <span>•</span>
+            <Link href="/terms" className="hover:text-orange-600 underline">Terms of Service</Link>
+            <span>•</span>
+            <a
+              href="https://myaccount.google.com/permissions"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-orange-600 underline"
+            >
+              Google Permissions
+            </a>
+          </div>
+        </div>
+      </footer>
 
       {/* Post Preview Modal */}
       <PostPreviewModal

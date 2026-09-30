@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import {
   X,
   HelpCircle,
@@ -9,8 +10,7 @@ import {
   ShieldCheck,
   ExternalLink,
   Code,
-  Sparkles,
-  Layers,
+  Users,
 } from 'lucide-react';
 
 interface SetupGuideModalProps {
@@ -33,7 +33,7 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
                 Blogger Auto Publisher Guide
               </h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Setup, tips &amp; troubleshooting
+                Public multi-user workflow, tips &amp; troubleshooting
               </p>
             </div>
           </div>
@@ -49,6 +49,17 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs text-slate-700 bg-slate-50">
+          {/* Multi-User Publishing */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+            <h4 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
+              <Users className="w-4 h-4 text-orange-600" />
+              <span>Public Multi-User Architecture</span>
+            </h4>
+            <p className="text-slate-600 leading-relaxed">
+              Any Google Blogger user can sign in with their own account. The application dynamically queries that user&apos;s available Blogger blogs, lets them choose their destination blog, and strictly isolates all tokens, blog selections, and post histories per account.
+            </p>
+          </div>
+
           {/* Quick Workflow */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
             <h4 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
@@ -62,7 +73,7 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
                 <strong className="text-slate-800">2. Enter caption:</strong> Type your story or update. Line breaks are cleanly preserved.
               </li>
               <li>
-                <strong className="text-slate-800">Tap Publish:</strong> The app formats your Blogger HTML template and publishes live to your blog immediately.
+                <strong className="text-slate-800">Tap Publish:</strong> The app formats your master Blogger HTML template and publishes live to your blog immediately.
               </li>
             </ol>
           </div>
@@ -102,21 +113,10 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
           <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
             <h4 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>Production Domain &amp; Auth</span>
+              <span>Production Domain &amp; OAuth</span>
             </h4>
             <p className="text-slate-600 leading-relaxed">
-              Authorized production domain: <code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded font-mono text-[11px]">blogger-post-automation.vercel.app</code>. Both popup and seamless redirect authentication are supported on Android Chrome.
-            </p>
-          </div>
-
-          {/* Google OAuth Testing Mode Note */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
-            <h4 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
-              <ShieldCheck className="w-4 h-4 text-blue-600" />
-              <span>OAuth Testing Mode &amp; Error 403</span>
-            </h4>
-            <p className="text-slate-600 leading-relaxed">
-              If Google shows <strong className="text-slate-800">&quot;has not completed the Google verification process (Error 403)&quot;</strong>, your app is in <strong>Testing</strong> mode in Google Cloud Console. Simply add your Gmail account to <strong>Test users</strong> under <em className="text-slate-800">APIs &amp; Services &gt; OAuth consent screen &gt; Test users</em>.
+              Authorized production domain: <code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded font-mono text-[11px]">blogger-post-automation.vercel.app</code>. Both popup and seamless redirect authentication are supported.
             </p>
           </div>
 
@@ -127,7 +127,7 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
               <span>Template Variables</span>
             </h4>
             <p className="text-slate-600 leading-relaxed mb-2">
-              You can customize your Blogger post HTML structure in Settings using these variables:
+              The master template replaces these dynamic variables upon publish:
             </p>
             <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
               <div className="bg-slate-100 p-2 rounded-lg border border-slate-200">
@@ -139,14 +139,37 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
                 <p className="text-slate-500 font-sans text-[10px] mt-0.5">Post image source</p>
               </div>
               <div className="bg-slate-100 p-2 rounded-lg border border-slate-200">
+                <code className="text-orange-700 font-bold">&#123;&#123;THUMBNAIL_URL&#125;&#125;</code>
+                <p className="text-slate-500 font-sans text-[10px] mt-0.5">Video thumbnail image</p>
+              </div>
+              <div className="bg-slate-100 p-2 rounded-lg border border-slate-200">
                 <code className="text-orange-700 font-bold">&#123;&#123;CAPTION&#125;&#125;</code>
                 <p className="text-slate-500 font-sans text-[10px] mt-0.5">Formatted text</p>
               </div>
-              <div className="bg-slate-100 p-2 rounded-lg border border-slate-200">
+              <div className="bg-slate-100 p-2 rounded-lg border border-slate-200 col-span-2">
                 <code className="text-orange-700 font-bold">&#123;&#123;PUBLISHED_DATE&#125;&#125;</code>
-                <p className="text-slate-500 font-sans text-[10px] mt-0.5">Date string</p>
+                <p className="text-slate-500 font-sans text-[10px] mt-0.5">Formatted publication date string</p>
               </div>
             </div>
+          </div>
+
+          <div className="p-3 bg-slate-100 rounded-xl text-[11px] text-slate-500 flex items-center justify-between">
+            <Link href="/privacy" className="hover:text-orange-600 underline font-medium">
+              Privacy Policy
+            </Link>
+            <span>•</span>
+            <Link href="/terms" className="hover:text-orange-600 underline font-medium">
+              Terms of Service
+            </Link>
+            <span>•</span>
+            <a
+              href="https://myaccount.google.com/permissions"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-orange-600 underline font-medium"
+            >
+              Google Account Permissions
+            </a>
           </div>
         </div>
 
@@ -155,7 +178,7 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-xl text-xs"
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-xl text-xs cursor-pointer"
           >
             Got it
           </button>

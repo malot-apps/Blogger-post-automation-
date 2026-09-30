@@ -125,6 +125,12 @@ function persistToken(token: string | null) {
     try {
       if (token) {
         sessionStorage.setItem(SESSION_TOKEN_KEY, token);
+        // Sync secure server-side session cookie
+        fetch('/api/auth/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessToken: token }),
+        }).catch((err) => console.warn('Server session sync notice:', err));
       } else {
         sessionStorage.removeItem(SESSION_TOKEN_KEY);
       }
@@ -140,6 +146,8 @@ function clearAuthSession() {
     try {
       sessionStorage.removeItem(SESSION_ORIGIN_KEY);
       sessionStorage.removeItem(SESSION_REDIRECT_URL_KEY);
+      // Clear server-side session cookie
+      fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
     } catch {
       // ignore
     }
