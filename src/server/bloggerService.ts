@@ -46,12 +46,79 @@ export interface GoogleTokenInfo {
 }
 
 /**
+ * Helper to parse Google API error responses and convert them into clear, production-ready messages.
+ */
+function parseGoogleApiError(status: number, errorBody: string, defaultAction: string): Error {
+  let message = '';
+  let reason = '';
+  try {
+    const parsed = JSON.parse(errorBody);
+    if (parsed.error?.message) {
+      message = parsed.error.message;
+    }
+    if (parsed.error?.errors?.[0]?.reason) {
+      reason = parsed.error.errors[0].reason;
+    }
+  } catch {
+    // ignore JSON parse error
+  }
+
+  // 1. Blogger API Disabled
+  if (
+    reason === 'accessNotConfigured' ||
+    reason === 'SERVICE_DISABLED' ||
+    message.toLowerCase().includes('blogger api has not been used') ||
+    message.toLowerCase().includes('is disabled')
+  ) {
+    return new Error(
+      'Blogger API disabled: Google Blogger API v3 is not enabled in your Google Cloud Project. Please enable it in Google Cloud Console > APIs & Services > Library > search "Blogger API v3".'
+    );
+  }
+
+  // 2. Token Expired / Invalid
+  if (status === 401 || reason === 'authError' || reason === 'invalid_grant') {
+    return new Error(
+      'Token expired: Your Google session or OAuth token has expired. Please sign in again.'
+    );
+  }
+
+  // 3. Insufficient Blogger Permission
+  if (
+    reason === 'insufficientPermissions' ||
+    (status === 403 && message.toLowerCase().includes('insufficient'))
+  ) {
+    return new Error(
+      'Insufficient Blogger permission: Your Google account did not grant Blogger permissions or lacks author/admin rights for this blog. Please sign in again and check the box to allow Blogger management.'
+    );
+  }
+
+  // 4. Rate limit
+  if (reason === 'rateLimitExceeded' || reason === 'dailyLimitExceeded') {
+    return new Error('Blogger API quota limit exceeded: Daily or rate limit reached. Please wait a moment or try again later.');
+  }
+
+  // 5. Blog not found
+  if (status === 404 || reason === 'notFound') {
+    return new Error('No Blogger blogs found: The specified Blogger blog was not found or was deleted. Please refresh your blog list.');
+  }
+
+  // 6. Unauthorized user / generic permission denied
+  if (status === 403) {
+    return new Error(
+      `Unauthorized user: Blogger API permission denied (${message || 'Access denied'}). Ensure your Google account has permission to manage this blog.`
+    );
+  }
+
+  return new Error(message || `${defaultAction} (${status})`);
+}
+
+/**
  * Validates a Google OAuth access token using Google's tokeninfo endpoint.
  * Ensures the token is active, not expired, and contains the required Blogger scope.
  */
 export async function validateGoogleAccessToken(accessToken: string): Promise<GoogleTokenInfo> {
   if (!accessToken || typeof accessToken !== 'string') {
-    throw new Error('No access token provided.');
+    throw new Error('OAuth not configured: No access token provided.');
   }
 
   const tokenUrl = `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`;
@@ -62,7 +129,7 @@ export async function validateGoogleAccessToken(accessToken: string): Promise<Go
 
   if (!response.ok) {
     if (response.status === 400 || response.status === 401) {
-      throw new Error('Google OAuth token is invalid or has expired. Please sign in again.');
+      throw new Error('Token expired: Google OAuth token is invalid or has expired. Please sign in again.');
     }
     throw new Error(`Failed to validate Google token with OAuth provider (${response.status}).`);
   }
@@ -72,12 +139,12 @@ export async function validateGoogleAccessToken(accessToken: string): Promise<Go
   // Verify that required Blogger scope was granted
   const scopes = (tokenInfo.scope || '').split(' ');
   const hasBloggerScope = scopes.some(
-    (s) => s === 'https://www.googleapis.com/auth/blogger' || s === 'https://www.googleapis.com/auth/blogger.readonly'
+    (s) => s === 'https://www.googleapis.com/auth/blogger'
   );
 
   if (!hasBloggerScope) {
     throw new Error(
-      'The authenticated session is missing Blogger permission. Please sign in again and check the box to allow Blogger management.'
+      'Insufficient Blogger permission: The authenticated session is missing Blogger permission (https://www.googleapis.com/auth/blogger). Please sign in again and check the box to allow Blogger management.'
     );
   }
 
@@ -99,25 +166,7 @@ export async function fetchUserBlogs(accessToken: string): Promise<BloggerBlog[]
 
   if (!response.ok) {
     const errorBody = await response.text();
-    let message = `Failed to fetch Blogger blogs (${response.status})`;
-    try {
-      const parsed = JSON.parse(errorBody);
-      if (parsed.error?.message) {
-        message = parsed.error.message;
-      }
-    } catch {
-      // ignore
-    }
-
-    if (response.status === 401) {
-      throw new Error('Google session expired or authorization was revoked. Please sign in again.');
-    }
-    if (response.status === 403) {
-      throw new Error(
-        `Blogger permission denied: ${message}. Ensure your Google account has Blogger enabled and permissions are granted.`
-      );
-    }
-    throw new Error(message);
+    throw parseGoogleApiError(response.status, errorBody, 'Failed to fetch Blogger blogs');
   }
 
   const data = await response.json();
@@ -158,33 +207,7 @@ export async function createAndPublishBloggerPost(
 
   if (!response.ok) {
     const errorBody = await response.text();
-    let message = `Blogger API post creation failed (${response.status})`;
-    let reason = '';
-    try {
-      const parsed = JSON.parse(errorBody);
-      if (parsed.error?.message) {
-        message = parsed.error.message;
-      }
-      if (parsed.error?.errors?.[0]?.reason) {
-        reason = parsed.error.errors[0].reason;
-      }
-    } catch {
-      // ignore
-    }
-
-    if (response.status === 401) {
-      throw new Error('Google authorization expired or was revoked. Please sign in again.');
-    }
-    if (response.status === 403) {
-      if (reason === 'rateLimitExceeded' || reason === 'dailyLimitExceeded') {
-        throw new Error('Blogger API quota limit exceeded. Please wait a moment or try again later.');
-      }
-      throw new Error(`Permission denied: You do not have permission to post to this Blogger blog (${message}).`);
-    }
-    if (response.status === 404) {
-      throw new Error('The specified Blogger blog was not found. Please refresh your blog list.');
-    }
-    throw new Error(message);
+    throw parseGoogleApiError(response.status, errorBody, 'Blogger API post creation failed');
   }
 
   const data = (await response.json()) as BloggerPostResponse;

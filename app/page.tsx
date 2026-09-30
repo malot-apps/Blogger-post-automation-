@@ -131,6 +131,9 @@ export default function Home() {
 
       const blogList: BloggerBlog[] = data.blogs || [];
       setBlogs(blogList);
+      if (data.warning && blogList.length === 0) {
+        setBlogsError(data.warning);
+      }
 
       if (blogList.length > 0) {
         let preferredId = '';

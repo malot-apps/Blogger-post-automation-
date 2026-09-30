@@ -19,16 +19,31 @@ export async function GET(req: NextRequest) {
 
     if (!token) {
       return NextResponse.json(
-        { error: 'Missing or invalid authentication session. Please sign in with Google.' },
+        { error: 'OAuth not configured: Missing or invalid authentication session. Please sign in with Google.' },
         { status: 401 }
       );
     }
 
     const blogs = await fetchUserBlogs(token);
-    return NextResponse.json({ blogs });
+    return NextResponse.json({
+      blogs,
+      warning:
+        blogs.length === 0
+          ? 'No Blogger blogs found: No active Blogger blogs were found for this Google account. Please create a blog at https://www.blogger.com first, then click Refresh.'
+          : undefined,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown server error';
-    const status = message.includes('expired') || message.includes('revoked') ? 401 : 500;
+    let status = 500;
+    if (message.includes('expired') || message.includes('revoked') || message.includes('Token expired')) {
+      status = 401;
+    } else if (
+      message.includes('permission') ||
+      message.includes('Unauthorized') ||
+      message.includes('disabled')
+    ) {
+      status = 403;
+    }
     return NextResponse.json({ error: message }, { status });
   }
 }

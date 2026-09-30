@@ -102,37 +102,24 @@ const SESSION_TOKEN_KEY = 'blogger_auth_access_token';
 const SESSION_ORIGIN_KEY = 'blogger_auth_origin';
 const SESSION_REDIRECT_URL_KEY = 'blogger_auth_redirect_return_url';
 
-// Try to retrieve token from memory or active tab sessionStorage
+// Retrieve active token from memory (tokens are never stored in browser localStorage or sessionStorage)
 function resolveToken(): string | null {
-  if (cachedAccessToken) return cachedAccessToken;
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = sessionStorage.getItem(SESSION_TOKEN_KEY);
-      if (stored) {
-        cachedAccessToken = stored;
-        return stored;
-      }
-    } catch {
-      // sessionStorage unavailable
-    }
-  }
-  return null;
+  return cachedAccessToken;
 }
 
 async function persistToken(token: string | null): Promise<void> {
   cachedAccessToken = token;
   if (typeof window !== 'undefined') {
     try {
+      // Purge any legacy token from client storage
+      sessionStorage.removeItem(SESSION_TOKEN_KEY);
       if (token) {
-        sessionStorage.setItem(SESSION_TOKEN_KEY, token);
-        // Sync secure server-side session cookie
+        // Sync token to server-side HttpOnly cookie to enforce multi-user isolation
         await fetch('/api/auth/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ accessToken: token }),
         }).catch((err) => console.warn('Server session sync notice:', err));
-      } else {
-        sessionStorage.removeItem(SESSION_TOKEN_KEY);
       }
     } catch {
       // ignore
@@ -144,9 +131,10 @@ async function clearAuthSession(): Promise<void> {
   await persistToken(null);
   if (typeof window !== 'undefined') {
     try {
+      sessionStorage.removeItem(SESSION_TOKEN_KEY);
       sessionStorage.removeItem(SESSION_ORIGIN_KEY);
       sessionStorage.removeItem(SESSION_REDIRECT_URL_KEY);
-      // Clear server-side session cookie
+      // Clear server-side HttpOnly session cookie
       await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
     } catch {
       // ignore
@@ -202,7 +190,7 @@ export const initAuth = (
           errMsg.includes('Access blocked')
         ) {
           console.error(
-            'Google OAuth Error 403 (access_denied): The app is in Testing mode. Ensure your account is added as a Test User under Google Cloud Console > APIs & Services > OAuth consent screen > Test users.'
+            'Unauthorized user (Google Error 403: access_denied): The Google OAuth consent screen is in "Testing" mode. To allow all Google accounts to sign in, click "Publish App" under Google Cloud Console > APIs & Services > OAuth consent screen. Until published, only configured Test Users can log in.'
           );
         } else {
           console.warn('Redirect auth check notice:', err);
@@ -254,7 +242,13 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     if (errCode === 'auth/unauthorized-domain') {
       const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
       throw new Error(
-        `Domain "${currentHost}" is not authorized. Please verify that "${PRODUCTION_HOSTNAME}" is registered in Firebase Console > Authentication > Settings > Authorized domains.`
+        `OAuth not configured: Domain "${currentHost}" is not authorized. Please verify that "${PRODUCTION_HOSTNAME}" and "${currentHost}" are registered in Firebase Console > Authentication > Settings > Authorized domains.`
+      );
+    }
+
+    if (errCode === 'auth/configuration-not-found' || errCode === 'auth/invalid-api-key') {
+      throw new Error(
+        'OAuth not configured: Firebase Authentication or Google Sign-In is not enabled in Firebase Console.'
       );
     }
 
@@ -266,7 +260,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       rawMsg.includes('Access blocked')
     ) {
       throw new Error(
-        'Google OAuth Error 403 (access_denied): The app is in Testing mode. Your Google email must be added to "Test users" in Google Cloud Console (APIs & Services > OAuth consent screen > Test users). Once added, you can sign in by clicking Advanced > Continue.'
+        'Unauthorized user (Google Error 403: access_denied): The Google OAuth consent screen is currently in "Testing" mode, so only accounts added to "Test users" can sign in. To allow all public Google accounts to access the app, you must switch Publishing status from "Testing" to "In production" in Google Cloud Console > APIs & Services > OAuth consent screen (click "Publish App").'
       );
     }
 

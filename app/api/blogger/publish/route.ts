@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     if (!token) {
       return NextResponse.json(
-        { error: 'Authentication required. Please sign in with Google.' },
+        { error: 'OAuth not configured: Authentication required. Please sign in with Google.' },
         { status: 401 }
       );
     }
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const targetBlog = userBlogs.find((b) => b.id === blogId);
     if (!targetBlog) {
       return NextResponse.json(
-        { error: 'Forbidden: You do not have permission to publish to this Blogger blog.' },
+        { error: 'Unauthorized user: You do not have permission to publish to this Blogger blog (blog not owned by your authenticated Google account).' },
         { status: 403 }
       );
     }
@@ -144,7 +144,16 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     console.error('Publishing error:', error);
     const message = error instanceof Error ? error.message : 'Failed to publish to Blogger';
-    const status = message.includes('expired') || message.includes('revoked') ? 401 : 500;
+    let status = 500;
+    if (message.includes('expired') || message.includes('revoked') || message.includes('Token expired')) {
+      status = 401;
+    } else if (
+      message.includes('permission') ||
+      message.includes('Unauthorized') ||
+      message.includes('disabled')
+    ) {
+      status = 403;
+    }
     return NextResponse.json({ error: message }, { status });
   }
 }
