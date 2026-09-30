@@ -182,9 +182,19 @@ export const initAuth = (
       })
       .catch((err: unknown) => {
         const errCode = (err as { code?: string })?.code;
+        const errMsg = err instanceof Error ? err.message : String(err);
         if (errCode === 'auth/unauthorized-domain') {
           console.error(
             `Firebase Auth Error: Domain "${window.location.hostname}" is not authorized in Firebase Console. Authorized production domain is: "${PRODUCTION_HOSTNAME}". Callback URI: "${OAUTH_CALLBACK_URI}"`
+          );
+        } else if (
+          errCode === 'auth/access-denied' ||
+          errMsg.includes('access_denied') ||
+          errMsg.includes('verification process') ||
+          errMsg.includes('Access blocked')
+        ) {
+          console.error(
+            'Google OAuth Error 403 (access_denied): The app is in Testing mode. Ensure your account is added as a Test User under Google Cloud Console > APIs & Services > OAuth consent screen > Test users.'
           );
         } else {
           console.warn('Redirect auth check notice:', err);
@@ -237,6 +247,18 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
       throw new Error(
         `Domain "${currentHost}" is not authorized. Please verify that "${PRODUCTION_HOSTNAME}" is registered in Firebase Console > Authentication > Settings > Authorized domains.`
+      );
+    }
+
+    const rawMsg = error instanceof Error ? error.message : String(error);
+    if (
+      errCode === 'auth/access-denied' ||
+      rawMsg.includes('access_denied') ||
+      rawMsg.includes('verification process') ||
+      rawMsg.includes('Access blocked')
+    ) {
+      throw new Error(
+        'Google OAuth Error 403 (access_denied): The app is in Testing mode. Your Google email must be added to "Test users" in Google Cloud Console (APIs & Services > OAuth consent screen > Test users). Once added, you can sign in by clicking Advanced > Continue.'
       );
     }
 

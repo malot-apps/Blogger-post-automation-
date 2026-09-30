@@ -109,6 +109,17 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
             </p>
           </div>
 
+          {/* Google OAuth Testing Mode Note */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+            <h4 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
+              <ShieldCheck className="w-4 h-4 text-blue-600" />
+              <span>OAuth Testing Mode &amp; Error 403</span>
+            </h4>
+            <p className="text-slate-600 leading-relaxed">
+              If Google shows <strong className="text-slate-800">&quot;has not completed the Google verification process (Error 403)&quot;</strong>, your app is in <strong>Testing</strong> mode in Google Cloud Console. Simply add your Gmail account to <strong>Test users</strong> under <em className="text-slate-800">APIs &amp; Services &gt; OAuth consent screen &gt; Test users</em>.
+            </p>
+          </div>
+
           {/* Template Placeholders */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
             <h4 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
