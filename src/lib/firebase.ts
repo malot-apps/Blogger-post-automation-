@@ -119,14 +119,14 @@ function resolveToken(): string | null {
   return null;
 }
 
-function persistToken(token: string | null) {
+async function persistToken(token: string | null): Promise<void> {
   cachedAccessToken = token;
   if (typeof window !== 'undefined') {
     try {
       if (token) {
         sessionStorage.setItem(SESSION_TOKEN_KEY, token);
         // Sync secure server-side session cookie
-        fetch('/api/auth/session', {
+        await fetch('/api/auth/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ accessToken: token }),
@@ -140,14 +140,14 @@ function persistToken(token: string | null) {
   }
 }
 
-function clearAuthSession() {
-  persistToken(null);
+async function clearAuthSession(): Promise<void> {
+  await persistToken(null);
   if (typeof window !== 'undefined') {
     try {
       sessionStorage.removeItem(SESSION_ORIGIN_KEY);
       sessionStorage.removeItem(SESSION_REDIRECT_URL_KEY);
       // Clear server-side session cookie
-      fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
+      await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
     } catch {
       // ignore
     }
@@ -169,7 +169,7 @@ export const initAuth = (
     const isProd = isProductionDomain();
 
     getRedirectResult(auth)
-      .then((result) => {
+      .then(async (result) => {
         if (result) {
           const storedOrigin = sessionStorage.getItem(SESSION_ORIGIN_KEY);
           if (storedOrigin && storedOrigin !== currentOrigin && !isProd) {
@@ -181,7 +181,7 @@ export const initAuth = (
 
           const credential = GoogleAuthProvider.credentialFromResult(result);
           if (credential?.accessToken) {
-            persistToken(credential.accessToken);
+            await persistToken(credential.accessToken);
             if (result.user && onAuthSuccess) {
               onAuthSuccess(result.user, credential.accessToken);
             }
@@ -220,7 +220,7 @@ export const initAuth = (
         if (onAuthFailure) onAuthFailure();
       }
     } else {
-      clearAuthSession();
+      clearAuthSession().catch(() => {});
       if (onAuthFailure) onAuthFailure();
     }
   });
@@ -246,7 +246,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       throw new Error('Could not obtain Blogger access token from Google sign in.');
     }
 
-    persistToken(credential.accessToken);
+    await persistToken(credential.accessToken);
     return { user: result.user, accessToken: credential.accessToken };
   } catch (error: unknown) {
     const errCode = (error as { code?: string })?.code;
@@ -270,6 +270,12 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       );
     }
 
+    // Gracefully handle user cancelling or closing the popup
+    if (errCode === 'auth/popup-closed-by-user') {
+      console.info('Sign-in popup was closed by user.');
+      return null;
+    }
+
     // Fall back to redirect if popup is blocked or unsupported on mobile browser
     if (
       errCode === 'auth/popup-blocked' ||
@@ -288,6 +294,27 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 /**
+ * Trigger direct Google Sign-In with redirect.
+ * Ideal for mobile browsers, PWAs, or embedded environments where popups are blocked or closed.
+ */
+export const googleSignInWithRedirect = async (): Promise<void> => {
+  try {
+    isSigningIn = true;
+    if (typeof window !== 'undefined') {
+      const activeOrigin = isProductionDomain() ? PRODUCTION_DOMAIN : window.location.origin;
+      sessionStorage.setItem(SESSION_ORIGIN_KEY, activeOrigin);
+      sessionStorage.setItem(SESSION_REDIRECT_URL_KEY, window.location.href);
+    }
+    await signInWithRedirect(auth, provider);
+  } catch (error: unknown) {
+    console.error('Redirect sign in error:', error);
+    throw error;
+  } finally {
+    isSigningIn = false;
+  }
+};
+
+/**
  * Get current access token.
  */
 export const getAccessToken = async (): Promise<string | null> => {
@@ -299,7 +326,7 @@ export const getAccessToken = async (): Promise<string | null> => {
  */
 export const logout = async () => {
   await signOut(auth);
-  clearAuthSession();
+  await clearAuthSession();
 };
 
 // ==========================================

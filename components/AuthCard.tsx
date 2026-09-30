@@ -6,11 +6,12 @@ import { ShieldCheck, Zap, CheckCircle2, Lock, ExternalLink } from 'lucide-react
 
 interface AuthCardProps {
   onSignIn: () => void;
+  onSignInWithRedirect?: () => void;
   isLoading: boolean;
   error: string | null;
 }
 
-export function AuthCard({ onSignIn, isLoading, error }: AuthCardProps) {
+export function AuthCard({ onSignIn, onSignInWithRedirect, isLoading, error }: AuthCardProps) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 sm:p-7 text-center max-w-lg mx-auto space-y-5">
       {/* Icon Badge */}
@@ -90,6 +91,19 @@ export function AuthCard({ onSignIn, isLoading, error }: AuthCardProps) {
           )}
         </button>
       </div>
+
+      {onSignInWithRedirect && (
+        <div className="text-center pt-0">
+          <button
+            type="button"
+            onClick={onSignInWithRedirect}
+            disabled={isLoading}
+            className="text-xs text-slate-500 hover:text-orange-600 underline font-medium cursor-pointer transition-colors disabled:opacity-50"
+          >
+            Having trouble with popups? Sign in with full-page redirect
+          </button>
+        </div>
+      )}
 
       {/* Permissions Transparency Breakdown */}
       <div className="pt-2 border-t border-slate-100 text-left space-y-2">

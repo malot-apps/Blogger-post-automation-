@@ -6,6 +6,7 @@ import type { User } from 'firebase/auth';
 import {
   initAuth,
   googleSignIn,
+  googleSignInWithRedirect,
   logout,
   getAccessToken,
   savePublishedPost,
@@ -208,10 +209,29 @@ export default function Home() {
         await loadBlogs(result.accessToken, result.user.uid);
       }
     } catch (err: unknown) {
-      console.error(err);
+      const errCode = (err as { code?: string })?.code;
       const msg = err instanceof Error ? err.message : 'Sign in failed';
+      // If user voluntarily closed or cancelled popup, do not show error banner
+      if (errCode === 'auth/popup-closed-by-user' || msg.includes('popup-closed-by-user')) {
+        return;
+      }
+      console.error('Sign in error:', err);
       setAuthError(msg);
     } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  // Handle direct Redirect Google Sign In (for mobile browsers / popup-restricted environments)
+  const handleSignInWithRedirect = async () => {
+    setIsSigningIn(true);
+    setAuthError(null);
+    try {
+      await googleSignInWithRedirect();
+    } catch (err: unknown) {
+      console.error('Redirect sign in error:', err);
+      const msg = err instanceof Error ? err.message : 'Redirect sign in failed';
+      setAuthError(msg);
       setIsSigningIn(false);
     }
   };
@@ -412,6 +432,7 @@ export default function Home() {
           <div className="space-y-6">
             <AuthCard
               onSignIn={handleSignIn}
+              onSignInWithRedirect={handleSignInWithRedirect}
               isLoading={isSigningIn}
               error={authError}
             />
