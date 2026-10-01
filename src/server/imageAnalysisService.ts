@@ -1,4 +1,5 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { Type } from '@google/genai';
+import { getGenAiClient, resolveImageToInlineData, withGeminiRetry, is503OrUnavailable } from './geminiUtils';
 
 export interface ImageCroppingInstructions {
   targetAspectRatio: string; // "16:9" matching the Blogger master template
@@ -29,69 +30,6 @@ export interface ImageUrlAnalysisResult {
   detectedElements: string[];
   croppingInstructions: ImageCroppingInstructions;
   language: string;
-}
-
-let cachedGenAi: GoogleGenAI | null = null;
-
-function getGenAiClient(): GoogleGenAI {
-  if (cachedGenAi) return cachedGenAi;
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY environment variable is not configured on the server.');
-  }
-  cachedGenAi = new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
-  return cachedGenAi;
-}
-
-/**
- * Downloads or parses an image from an HTTP/HTTPS URL or data URL and returns its base64 and MIME type.
- */
-async function resolveImageToInlineData(imageUrl: string): Promise<{ data: string; mimeType: string }> {
-  const trimmed = imageUrl.trim();
-
-  // If already a base64 data URL
-  if (trimmed.startsWith('data:')) {
-    const match = trimmed.match(/^data:([^;]+);base64,(.+)$/);
-    if (match) {
-      return {
-        mimeType: match[1],
-        data: match[2],
-      };
-    }
-  }
-
-  // If standard HTTP/HTTPS URL
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    const response = await fetch(trimmed, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
-        Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch image from URL: ${response.status} ${response.statusText}`);
-    }
-
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    const cleanMime = contentType.split(';')[0].trim().toLowerCase();
-    const arrayBuffer = await response.arrayBuffer();
-    const base64Data = Buffer.from(arrayBuffer).toString('base64');
-
-    return {
-      mimeType: cleanMime.startsWith('image/') ? cleanMime : 'image/jpeg',
-      data: base64Data,
-    };
-  }
-
-  throw new Error('Invalid image URL. Must be an HTTP/HTTPS URL or base64 data URL.');
 }
 
 /**
@@ -140,100 +78,134 @@ Return:
 
 Respond in JSON adhering to the specified schema.`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            mimeType,
-            data: base64Data,
-          },
-        },
-        {
-          text: promptText,
-        },
-      ],
-    },
-    config: {
-      systemInstruction,
-      temperature: 0.7,
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          title: {
-            type: Type.STRING,
-            description: `SEO-friendly title in ${languageLabel}.`,
-          },
-          summary: {
-            type: Type.STRING,
-            description: `Summary of the image in ${languageLabel}.`,
-          },
-          mainSubject: {
-            type: Type.STRING,
-            description: 'The primary subject identified.',
-          },
-          detectedElements: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-            description: 'Key visible objects or elements.',
-          },
-          focalXPercent: {
-            type: Type.NUMBER,
-            description: 'Horizontal center of the focal area (0-100).',
-          },
-          focalYPercent: {
-            type: Type.NUMBER,
-            description: 'Vertical center of the focal area (0-100).',
-          },
-          focalDescription: {
-            type: Type.STRING,
-            description: `Description of the focal area in ${languageLabel}.`,
-          },
-          originXPercent: {
-            type: Type.NUMBER,
-            description: 'Suggested crop origin X in percentage (0-100).',
-          },
-          originYPercent: {
-            type: Type.NUMBER,
-            description: 'Suggested crop origin Y in percentage (0-100).',
-          },
-          widthPercent: {
-            type: Type.NUMBER,
-            description: 'Suggested crop width in percentage of original (0-100).',
-          },
-          heightPercent: {
-            type: Type.NUMBER,
-            description: 'Suggested crop height in percentage of original (0-100).',
-          },
-          recommendedZoom: {
-            type: Type.NUMBER,
-            description: 'Recommended zoom factor between 1.0 and 1.3.',
-          },
-          compositionAdvice: {
-            type: Type.STRING,
-            description: `Instructions and advice for cropping/framing in ${languageLabel}.`,
-          },
-          recommendedStyle: {
-            type: Type.STRING,
-            description: 'One of: cinematic_focus, dramatic_close, rule_of_thirds, vivid_editorial.',
-          },
-        },
-        required: [
-          'title',
-          'summary',
-          'mainSubject',
-          'detectedElements',
-          'focalXPercent',
-          'focalYPercent',
-          'compositionAdvice',
-        ],
-      },
-    },
-  });
+  // Models to attempt: primary gemini-3.8-flash with fallback to gemini-3.1-flash-lite on 503 high demand
+  const textModelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  let lastError: unknown = null;
+  let responseText: string | undefined;
 
-  const rawJson = response.text?.trim() || '{}';
+  for (const model of textModelsToTry) {
+    try {
+      const response = await withGeminiRetry(
+        async () => {
+          return await ai.models.generateContent({
+            model,
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Data,
+                  },
+                },
+                {
+                  text: promptText,
+                },
+              ],
+            },
+            config: {
+              systemInstruction,
+              temperature: 0.7,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  title: {
+                    type: Type.STRING,
+                    description: `SEO-friendly title in ${languageLabel}.`,
+                  },
+                  summary: {
+                    type: Type.STRING,
+                    description: `Summary of the image in ${languageLabel}.`,
+                  },
+                  mainSubject: {
+                    type: Type.STRING,
+                    description: 'The primary subject identified.',
+                  },
+                  detectedElements: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                    description: 'Key visible objects or elements.',
+                  },
+                  focalXPercent: {
+                    type: Type.NUMBER,
+                    description: 'Horizontal center of the focal area (0-100).',
+                  },
+                  focalYPercent: {
+                    type: Type.NUMBER,
+                    description: 'Vertical center of the focal area (0-100).',
+                  },
+                  focalDescription: {
+                    type: Type.STRING,
+                    description: `Description of the focal area in ${languageLabel}.`,
+                  },
+                  originXPercent: {
+                    type: Type.NUMBER,
+                    description: 'Suggested crop origin X in percentage (0-100).',
+                  },
+                  originYPercent: {
+                    type: Type.NUMBER,
+                    description: 'Suggested crop origin Y in percentage (0-100).',
+                  },
+                  widthPercent: {
+                    type: Type.NUMBER,
+                    description: 'Suggested crop width in percentage of original (0-100).',
+                  },
+                  heightPercent: {
+                    type: Type.NUMBER,
+                    description: 'Suggested crop height in percentage of original (0-100).',
+                  },
+                  recommendedZoom: {
+                    type: Type.NUMBER,
+                    description: 'Recommended zoom factor between 1.0 and 1.3.',
+                  },
+                  compositionAdvice: {
+                    type: Type.STRING,
+                    description: `Instructions and advice for cropping/framing in ${languageLabel}.`,
+                  },
+                  recommendedStyle: {
+                    type: Type.STRING,
+                    description: 'One of: cinematic_focus, dramatic_close, rule_of_thirds, vivid_editorial.',
+                  },
+                },
+                required: [
+                  'title',
+                  'summary',
+                  'mainSubject',
+                  'detectedElements',
+                  'focalXPercent',
+                  'focalYPercent',
+                  'compositionAdvice',
+                ],
+              },
+            },
+          });
+        },
+        {
+          maxRetries: 2,
+          initialDelayMs: 1200,
+        }
+      );
+
+      responseText = response.text;
+      if (responseText) break;
+    } catch (err: unknown) {
+      lastError = err;
+      if (is503OrUnavailable(err)) {
+        console.warn(`[Image Analysis] Model ${model} returned 503, attempting fallback:`, err);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (!responseText) {
+    if (lastError && is503OrUnavailable(lastError)) {
+      throw new Error('AI analysis service is temporarily busy. Please try again.');
+    }
+    throw lastError instanceof Error ? lastError : new Error('Failed to analyze image with AI.');
+  }
+
+  const rawJson = responseText.trim() || '{}';
   const parsed = JSON.parse(rawJson);
 
   const focalX = typeof parsed.focalXPercent === 'number' ? Math.max(0, Math.min(100, parsed.focalXPercent)) : 50;

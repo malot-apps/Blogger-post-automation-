@@ -119,29 +119,68 @@ export function AiContentAssistant({
       setEditableAiTitle(analysis.title);
       setPreviousTitles([analysis.title]);
 
-      // Step 2: Compose exact 1200×675 (16:9) thumbnail based on the same image
+      // Step 2: Generate professional 16:9 thumbnail using native Gemini image model
       setAnalysisStepText(
-        language === 'bn' ? '১২০০×৬৭৫ থাম্বনেইল তৈরি হচ্ছে...' : 'Composing 1200×675 thumbnail...'
+        language === 'bn' ? 'জেমিনাই ১৬:৯ থাম্বনেইল তৈরি হচ্ছে...' : 'Generating 16:9 thumbnail with Gemini...'
       );
 
       const initialStyle = COMPOSITION_STYLES[0].id;
       setCurrentStyleIndex(0);
 
-      const composed = await composeAiThumbnail(mainImageSrc, {
-        focalPoint: analysis.focalPoint,
-        style: initialStyle,
-        targetWidth: 1200,
-        targetHeight: 675,
-      });
+      let generatedThumbUrl: string | null = null;
+      let thumbError: string | null = null;
 
-      setAiThumbnailResult(composed);
+      try {
+        const thumbRes = await fetch('/api/ai/generate-thumbnail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image: mainImageSrc,
+            subjectContext: `${analysis.mainSubject}. ${analysis.summary}`,
+            style: initialStyle,
+            language,
+          }),
+        });
 
-      // Auto-apply both initially for maximum convenience, while allowing edit
+        const thumbJson = await thumbRes.json();
+        if (!thumbRes.ok || !thumbJson.success || !thumbJson.thumbnailUrl) {
+          if (thumbRes.status === 503 || thumbJson.error?.includes('503') || thumbJson.error?.includes('busy')) {
+            thumbError = 'AI thumbnail service is temporarily busy. Please try again.';
+          } else {
+            thumbError = thumbJson.error || 'Failed to generate thumbnail with AI.';
+          }
+        } else {
+          generatedThumbUrl = thumbJson.thumbnailUrl;
+        }
+      } catch (tErr: unknown) {
+        thumbError = 'AI thumbnail service is temporarily busy. Please try again.';
+      }
+
+      if (generatedThumbUrl) {
+        const composed: ComposedThumbnailResult = {
+          dataUrl: generatedThumbUrl,
+          width: 1200,
+          height: 675,
+          style: initialStyle,
+          styleLabel: 'Gemini Native 16:9',
+        };
+
+        setAiThumbnailResult(composed);
+        onApplyThumbnail(generatedThumbUrl);
+      } else if (thumbError) {
+        // If image generation failed, do NOT silently report success
+        setAnalysisError(thumbError);
+      }
+
+      // Auto-apply title
       onApplyTitle(analysis.title);
-      onApplyThumbnail(composed.dataUrl);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'AI generation failed.';
-      setAnalysisError(msg);
+      if (msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('busy')) {
+        setAnalysisError('AI thumbnail service is temporarily busy. Please try again.');
+      } else {
+        setAnalysisError(msg);
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -186,7 +225,7 @@ export function AiContentAssistant({
 
   /**
    * Regenerate Thumbnail only:
-   * Keeps the same source image but cycles to a different visual composition style (16:9, 1200x675)
+   * Uses Gemini native image-generation model to generate an alternative 16:9 thumbnail
    */
   const handleRegenerateThumbnail = async () => {
     if (!mainImageSrc) return;
@@ -196,20 +235,45 @@ export function AiContentAssistant({
     try {
       const nextIndex = (currentStyleIndex + 1) % COMPOSITION_STYLES.length;
       setCurrentStyleIndex(nextIndex);
-      const nextStyle: CompositionStyle = COMPOSITION_STYLES[nextIndex].id;
+      const nextStyle = COMPOSITION_STYLES[nextIndex].id;
 
-      const composed = await composeAiThumbnail(mainImageSrc, {
-        focalPoint: aiAnalysis?.focalPoint || { xPercent: 50, yPercent: 50, recommendedZoom: 1.0 },
-        style: nextStyle,
-        targetWidth: 1200,
-        targetHeight: 675,
+      const thumbRes = await fetch('/api/ai/generate-thumbnail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: mainImageSrc,
+          subjectContext: aiAnalysis ? `${aiAnalysis.mainSubject}. ${aiAnalysis.summary}` : '',
+          style: nextStyle,
+          language,
+        }),
       });
 
-      setAiThumbnailResult(composed);
-      onApplyThumbnail(composed.dataUrl);
+      const thumbJson = await thumbRes.json();
+      if (!thumbRes.ok || !thumbJson.success || !thumbJson.thumbnailUrl) {
+        if (thumbRes.status === 503 || thumbJson.error?.includes('busy') || thumbJson.error?.includes('503')) {
+          throw new Error('AI thumbnail service is temporarily busy. Please try again.');
+        }
+        throw new Error(thumbJson.error || 'Failed to generate thumbnail with AI.');
+      }
+
+      const generatedDataUrl = thumbJson.thumbnailUrl;
+      const thumbResult: ComposedThumbnailResult = {
+        dataUrl: generatedDataUrl,
+        width: 1200,
+        height: 675,
+        style: nextStyle,
+        styleLabel: COMPOSITION_STYLES[nextIndex].label,
+      };
+
+      setAiThumbnailResult(thumbResult);
+      onApplyThumbnail(generatedDataUrl);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Thumbnail composition failed.';
-      setAnalysisError(msg);
+      const msg = err instanceof Error ? err.message : 'Thumbnail generation failed.';
+      if (msg.includes('503') || msg.includes('busy')) {
+        setAnalysisError('AI thumbnail service is temporarily busy. Please try again.');
+      } else {
+        setAnalysisError(msg);
+      }
     } finally {
       setIsRegeneratingThumbnail(false);
     }

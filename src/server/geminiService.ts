@@ -1,25 +1,5 @@
-import { GoogleGenAI, Type } from '@google/genai';
-
-let cachedAiClient: GoogleGenAI | null = null;
-
-function getAiClient(): GoogleGenAI {
-  if (cachedAiClient) {
-    return cachedAiClient;
-  }
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY environment variable is not configured.');
-  }
-  cachedAiClient = new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
-  return cachedAiClient;
-}
+import { Type } from '@google/genai';
+import { getGenAiClient, withGeminiRetry, is503OrUnavailable } from './geminiUtils';
 
 export interface ImageAnalysisResult {
   title: string;
@@ -43,7 +23,7 @@ export async function analyzeImageForBlogger({
   mimeType?: string;
   language?: 'bn' | 'en';
 }): Promise<ImageAnalysisResult> {
-  const ai = getAiClient();
+  const ai = getGenAiClient();
 
   // Strip data URL header if present
   let cleanBase64 = imageBase64;
@@ -79,67 +59,97 @@ Identify:
 
 Respond in JSON according to the schema.`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            mimeType,
-            data: cleanBase64,
-          },
-        },
-        {
-          text: promptText,
-        },
-      ],
-    },
-    config: {
-      systemInstruction,
-      temperature: 0.7,
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          title: {
-            type: Type.STRING,
-            description: `SEO-friendly title in ${isBengali ? 'Bengali (বাংলা)' : 'English'}.`,
-          },
-          summary: {
-            type: Type.STRING,
-            description: 'Brief description of the image content and topic.',
-          },
-          mainSubject: {
-            type: Type.STRING,
-            description: 'The main subject or object seen in the image.',
-          },
-          context: {
-            type: Type.STRING,
-            description: 'The setting, action, or context.',
-          },
-          focalXPercent: {
-            type: Type.NUMBER,
-            description: 'Horizontal center of the main subject (0 to 100).',
-          },
-          focalYPercent: {
-            type: Type.NUMBER,
-            description: 'Vertical center of the main subject (0 to 100).',
-          },
-          recommendedZoom: {
-            type: Type.NUMBER,
-            description: 'Zoom level between 1.0 and 1.3.',
-          },
-          suggestedBadge: {
-            type: Type.STRING,
-            description: 'Optional 1-2 word category tag (e.g. ভাইরাল, খবর, Special, Trending).',
-          },
-        },
-        required: ['title', 'summary', 'focalXPercent', 'focalYPercent'],
-      },
-    },
-  });
+  const textModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  let lastError: unknown = null;
+  let responseText: string | undefined;
 
-  const rawText = response.text?.trim() || '{}';
+  for (const model of textModels) {
+    try {
+      const response = await withGeminiRetry(
+        async () => {
+          return await ai.models.generateContent({
+            model,
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: cleanBase64,
+                  },
+                },
+                {
+                  text: promptText,
+                },
+              ],
+            },
+            config: {
+              systemInstruction,
+              temperature: 0.7,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  title: {
+                    type: Type.STRING,
+                    description: `SEO-friendly title in ${isBengali ? 'Bengali (বাংলা)' : 'English'}.`,
+                  },
+                  summary: {
+                    type: Type.STRING,
+                    description: 'Brief description of the image content and topic.',
+                  },
+                  mainSubject: {
+                    type: Type.STRING,
+                    description: 'The main subject or object seen in the image.',
+                  },
+                  context: {
+                    type: Type.STRING,
+                    description: 'The setting, action, or context.',
+                  },
+                  focalXPercent: {
+                    type: Type.NUMBER,
+                    description: 'Horizontal center of the main subject (0 to 100).',
+                  },
+                  focalYPercent: {
+                    type: Type.NUMBER,
+                    description: 'Vertical center of the main subject (0 to 100).',
+                  },
+                  recommendedZoom: {
+                    type: Type.NUMBER,
+                    description: 'Zoom level between 1.0 and 1.3.',
+                  },
+                  suggestedBadge: {
+                    type: Type.STRING,
+                    description: 'Optional 1-2 word category tag (e.g. ভাইরাল, খবর, Special, Trending).',
+                  },
+                },
+                required: ['title', 'summary', 'focalXPercent', 'focalYPercent'],
+              },
+            },
+          });
+        },
+        { maxRetries: 2, initialDelayMs: 1200 }
+      );
+
+      responseText = response.text;
+      if (responseText) break;
+    } catch (err: unknown) {
+      lastError = err;
+      if (is503OrUnavailable(err)) {
+        console.warn(`[geminiService] Model ${model} returned 503, trying fallback:`, err);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (!responseText) {
+    if (lastError && is503OrUnavailable(lastError)) {
+      throw new Error('AI service is temporarily busy. Please try again.');
+    }
+    throw lastError instanceof Error ? lastError : new Error('AI analysis produced invalid response format.');
+  }
+
+  const rawText = responseText.trim() || '{}';
   try {
     const parsed = JSON.parse(rawText);
     return {
@@ -173,7 +183,7 @@ export async function regenerateSeoTitle({
   previousTitles?: string[];
   contextSummary?: string;
 }): Promise<string> {
-  const ai = getAiClient();
+  const ai = getGenAiClient();
   const isBengali = language === 'bn';
 
   const systemInstruction = `You are an expert SEO title specialist for Google Blogger.
@@ -204,27 +214,57 @@ Rules:
     text: `Generate a new alternative SEO title in ${isBengali ? 'Bengali (বাংলা)' : 'English'}. Context: ${contextSummary || 'Uploaded photo'}. Do not repeat: ${previousTitles.join(' | ')}.`,
   });
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
-    contents: { parts },
-    config: {
-      systemInstruction,
-      temperature: 0.85,
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          title: {
-            type: Type.STRING,
-            description: `New alternative title in ${isBengali ? 'Bengali' : 'English'}`,
-          },
-        },
-        required: ['title'],
-      },
-    },
-  });
+  const textModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  let lastError: unknown = null;
+  let responseText: string | undefined;
 
-  const rawText = response.text?.trim() || '{}';
+  for (const model of textModels) {
+    try {
+      const response = await withGeminiRetry(
+        async () => {
+          return await ai.models.generateContent({
+            model,
+            contents: { parts },
+            config: {
+              systemInstruction,
+              temperature: 0.85,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  title: {
+                    type: Type.STRING,
+                    description: `New alternative title in ${isBengali ? 'Bengali' : 'English'}`,
+                  },
+                },
+                required: ['title'],
+              },
+            },
+          });
+        },
+        { maxRetries: 2, initialDelayMs: 1200 }
+      );
+
+      responseText = response.text;
+      if (responseText) break;
+    } catch (err: unknown) {
+      lastError = err;
+      if (is503OrUnavailable(err)) {
+        console.warn(`[geminiService] Title model ${model} returned 503, trying fallback:`, err);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (!responseText) {
+    if (lastError && is503OrUnavailable(lastError)) {
+      throw new Error('AI title service is temporarily busy. Please try again.');
+    }
+    throw lastError instanceof Error ? lastError : new Error('Failed to generate alternative title.');
+  }
+
+  const rawText = responseText.trim() || '{}';
   try {
     const parsed = JSON.parse(rawText);
     return parsed.title?.trim() || '';
