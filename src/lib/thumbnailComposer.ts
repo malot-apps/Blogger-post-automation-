@@ -130,9 +130,12 @@ export async function composeAiThumbnail(
   cropW = Math.round(cropW / zoomFactor);
   cropH = Math.round(cropH / zoomFactor);
 
-  // Calculate focal anchor
-  let focalX = (focalPoint.xPercent / 100) * srcW;
-  let focalY = (focalPoint.yPercent / 100) * srcH;
+  // Calculate focal anchor with central safe-zone clamping (30%-70%)
+  // Ensures important subject remains visible when object-fit: cover crops outer margins on mobile viewports
+  const safeXPercent = Math.max(30, Math.min(70, focalPoint.xPercent));
+  const safeYPercent = Math.max(30, Math.min(70, focalPoint.yPercent));
+  let focalX = (safeXPercent / 100) * srcW;
+  let focalY = (safeYPercent / 100) * srcH;
 
   if (style === 'rule_of_thirds') {
     // Shift focal point towards 38% or 62% for rule of thirds

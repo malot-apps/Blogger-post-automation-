@@ -63,6 +63,7 @@ export function AiContentAssistant({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStepText, setAnalysisStepText] = useState('Analyzing image...');
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [thumbnailError, setThumbnailError] = useState<string | null>(null);
 
   // AI Results
   const [aiAnalysis, setAiAnalysis] = useState<ImageAnalysisData | null>(null);
@@ -91,6 +92,7 @@ export function AiContentAssistant({
     }
 
     setAnalysisError(null);
+    setThumbnailError(null);
     setIsAnalyzing(true);
     setAnalysisStepText('Analyzing image with AI...');
 
@@ -119,6 +121,9 @@ export function AiContentAssistant({
       setEditableAiTitle(analysis.title);
       setPreviousTitles([analysis.title]);
 
+      // Auto-apply title immediately
+      onApplyTitle(analysis.title);
+
       // Step 2: Generate professional 16:9 thumbnail using native Gemini image model
       setAnalysisStepText(
         language === 'bn' ? 'জেমিনাই ১৬:৯ থাম্বনেইল তৈরি হচ্ছে...' : 'Generating 16:9 thumbnail with Gemini...'
@@ -126,9 +131,6 @@ export function AiContentAssistant({
 
       const initialStyle = COMPOSITION_STYLES[0].id;
       setCurrentStyleIndex(0);
-
-      let generatedThumbUrl: string | null = null;
-      let thumbError: string | null = null;
 
       try {
         const thumbRes = await fetch('/api/ai/generate-thumbnail', {
@@ -143,44 +145,32 @@ export function AiContentAssistant({
         });
 
         const thumbJson = await thumbRes.json();
-        if (!thumbRes.ok || !thumbJson.success || !thumbJson.thumbnailUrl) {
-          if (thumbRes.status === 503 || thumbJson.error?.includes('503') || thumbJson.error?.includes('busy')) {
-            thumbError = 'AI thumbnail service is temporarily busy. Please try again.';
-          } else {
-            thumbError = thumbJson.error || 'Failed to generate thumbnail with AI.';
-          }
+        if (thumbRes.ok && thumbJson.success && thumbJson.thumbnailUrl) {
+          const composed: ComposedThumbnailResult = {
+            dataUrl: thumbJson.thumbnailUrl,
+            width: 1200,
+            height: 675,
+            style: initialStyle,
+            styleLabel: 'Gemini Native 16:9',
+          };
+
+          setAiThumbnailResult(composed);
+          onApplyThumbnail(thumbJson.thumbnailUrl);
+          setThumbnailError(null);
         } else {
-          generatedThumbUrl = thumbJson.thumbnailUrl;
+          // Thumbnail generation failed, but DO NOT fail title or overall feature
+          setAiThumbnailResult(null);
+          setThumbnailError(
+            thumbJson.error || 'AI thumbnail could not be generated. Please try again.'
+          );
         }
-      } catch (tErr: unknown) {
-        thumbError = 'AI thumbnail service is temporarily busy. Please try again.';
+      } catch {
+        setAiThumbnailResult(null);
+        setThumbnailError('AI thumbnail could not be generated. Please try again.');
       }
-
-      if (generatedThumbUrl) {
-        const composed: ComposedThumbnailResult = {
-          dataUrl: generatedThumbUrl,
-          width: 1200,
-          height: 675,
-          style: initialStyle,
-          styleLabel: 'Gemini Native 16:9',
-        };
-
-        setAiThumbnailResult(composed);
-        onApplyThumbnail(generatedThumbUrl);
-      } else if (thumbError) {
-        // If image generation failed, do NOT silently report success
-        setAnalysisError(thumbError);
-      }
-
-      // Auto-apply title
-      onApplyTitle(analysis.title);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'AI generation failed.';
-      if (msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('busy')) {
-        setAnalysisError('AI thumbnail service is temporarily busy. Please try again.');
-      } else {
-        setAnalysisError(msg);
-      }
+      setAnalysisError(msg);
     } finally {
       setIsAnalyzing(false);
     }
@@ -230,7 +220,7 @@ export function AiContentAssistant({
   const handleRegenerateThumbnail = async () => {
     if (!mainImageSrc) return;
     setIsRegeneratingThumbnail(true);
-    setAnalysisError(null);
+    setThumbnailError(null);
 
     try {
       const nextIndex = (currentStyleIndex + 1) % COMPOSITION_STYLES.length;
@@ -250,10 +240,9 @@ export function AiContentAssistant({
 
       const thumbJson = await thumbRes.json();
       if (!thumbRes.ok || !thumbJson.success || !thumbJson.thumbnailUrl) {
-        if (thumbRes.status === 503 || thumbJson.error?.includes('busy') || thumbJson.error?.includes('503')) {
-          throw new Error('AI thumbnail service is temporarily busy. Please try again.');
-        }
-        throw new Error(thumbJson.error || 'Failed to generate thumbnail with AI.');
+        throw new Error(
+          thumbJson.error || 'AI thumbnail could not be generated. Please try again.'
+        );
       }
 
       const generatedDataUrl = thumbJson.thumbnailUrl;
@@ -267,13 +256,13 @@ export function AiContentAssistant({
 
       setAiThumbnailResult(thumbResult);
       onApplyThumbnail(generatedDataUrl);
+      setThumbnailError(null);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Thumbnail generation failed.';
-      if (msg.includes('503') || msg.includes('busy')) {
-        setAnalysisError('AI thumbnail service is temporarily busy. Please try again.');
-      } else {
-        setAnalysisError(msg);
-      }
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'AI thumbnail could not be generated. Please try again.';
+      setThumbnailError(msg);
     } finally {
       setIsRegeneratingThumbnail(false);
     }
@@ -392,10 +381,16 @@ export function AiContentAssistant({
                 </p>
               </div>
             </div>
-            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <Check className="w-3 h-3 text-emerald-600" />
-              <span>Ready</span>
-            </span>
+            {aiThumbnailResult ? (
+              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Check className="w-3 h-3 text-emerald-600" />
+                <span>Ready</span>
+              </span>
+            ) : (
+              <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span>Title Ready</span>
+              </span>
+            )}
           </div>
 
           {/* 1. AI Generated Title (Editable) */}
@@ -432,7 +427,7 @@ export function AiContentAssistant({
                 className={`text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-colors ${
                   isTitleApplied
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-300'
-                    : 'bg-orange-600 hover:bg-orange-700 text-white shadow-2xs'
+                    : 'bg-orange-600 hover:bg-orange-700 text-white shadow-2xs cursor-pointer'
                 }`}
               >
                 {isTitleApplied ? (
@@ -443,7 +438,7 @@ export function AiContentAssistant({
                 ) : (
                   <>
                     <Check className="w-3.5 h-3.5" />
-                    <span>✓ Use AI Title</span>
+                    <span>✓ Use Title</span>
                   </>
                 )}
               </button>
@@ -452,7 +447,7 @@ export function AiContentAssistant({
                 type="button"
                 onClick={handleRegenerateTitle}
                 disabled={isRegeneratingTitle}
-                className="text-xs text-slate-600 hover:text-orange-600 bg-slate-100 hover:bg-orange-50 border border-slate-200 px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-colors disabled:opacity-50"
+                className="text-xs text-slate-600 hover:text-orange-600 bg-slate-100 hover:bg-orange-50 border border-slate-200 px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-colors disabled:opacity-50 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isRegeneratingTitle ? 'animate-spin text-orange-600' : ''}`} />
                 <span>{isRegeneratingTitle ? 'Generating...' : '↻ Regenerate Title'}</span>
@@ -460,8 +455,8 @@ export function AiContentAssistant({
             </div>
           </div>
 
-          {/* 2. AI Thumbnail (Exact 1200×675 / 16:9) */}
-          {aiThumbnailResult && (
+          {/* 2. AI Thumbnail Section */}
+          {aiThumbnailResult ? (
             <div className="space-y-2 pt-2 border-t border-slate-100">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
@@ -470,19 +465,19 @@ export function AiContentAssistant({
                 </label>
                 <div className="flex items-center space-x-1.5 text-[10px]">
                   <span className="font-mono text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
-                    1200×675 • 16:9
+                    Height: 450px • Cover Fit
                   </span>
                   <span className="text-slate-500">({aiThumbnailResult.styleLabel})</span>
                 </div>
               </div>
 
-              {/* Thumbnail Preview (Rendered at exact 16:9 aspect ratio matching Blogger video container) */}
+              {/* Thumbnail Preview (Demonstrating centered safe zone for width: 100%; height: 450px; object-fit: cover) */}
               <div className="relative bg-slate-950 rounded-xl overflow-hidden border border-slate-300 shadow-xs">
-                <div className="relative aspect-16/9 w-full flex items-center justify-center">
+                <div className="relative aspect-16/9 sm:h-[220px] w-full flex items-center justify-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={aiThumbnailResult.dataUrl}
-                    alt="AI Composed Thumbnail"
+                    alt="AI Generated Thumbnail"
                     className="w-full h-full object-cover"
                   />
 
@@ -496,7 +491,7 @@ export function AiContentAssistant({
                   {/* Bottom badge indicator */}
                   <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[10px] pointer-events-none">
                     <span className="bg-black/60 backdrop-blur-xs px-2 py-0.5 rounded-full font-semibold">
-                      Exact Template Size (1200×675)
+                      Centered Safe Zone (Cover Fit)
                     </span>
                     <span className="bg-purple-600/80 backdrop-blur-xs px-2 py-0.5 rounded-full font-mono">
                       &#123;&#123;THUMBNAIL_URL&#125;&#125;
@@ -512,7 +507,7 @@ export function AiContentAssistant({
                   onClick={() => {
                     onApplyThumbnail(aiThumbnailResult.dataUrl);
                   }}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-colors ${
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-colors cursor-pointer ${
                     isThumbnailApplied
                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-300'
                       : 'bg-purple-600 hover:bg-purple-700 text-white shadow-2xs'
@@ -535,28 +530,51 @@ export function AiContentAssistant({
                   type="button"
                   onClick={handleRegenerateThumbnail}
                   disabled={isRegeneratingThumbnail}
-                  className="text-xs text-slate-600 hover:text-purple-600 bg-slate-100 hover:bg-purple-50 border border-slate-200 px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-colors disabled:opacity-50"
-                  title="Cycles through alternative 16:9 compositions of the same image"
+                  className="text-xs text-slate-600 hover:text-purple-600 bg-slate-100 hover:bg-purple-50 border border-slate-200 px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  title="Regenerates thumbnail with Gemini"
                 >
                   <RefreshCw
                     className={`w-3.5 h-3.5 ${isRegeneratingThumbnail ? 'animate-spin text-purple-600' : ''}`}
                   />
                   <span>
-                    {isRegeneratingThumbnail ? 'Composing...' : '↻ Regenerate Thumbnail'}
+                    {isRegeneratingThumbnail ? 'Generating...' : '↻ Regenerate Thumbnail'}
                   </span>
                 </button>
               </div>
+            </div>
+          ) : (
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                  <Film className="w-3.5 h-3.5 text-purple-600" />
+                  <span>AI Thumbnail</span>
+                </label>
+                <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 font-medium">
+                  Cover Fit • 450px
+                </span>
+              </div>
 
-              {aiAnalysis.croppingInstructions?.compositionAdvice && (
-                <div className="bg-purple-50/70 border border-purple-200/80 rounded-lg p-2 text-[11px] text-purple-900 flex items-start space-x-1.5">
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-0.5" />
-                  <p className="leading-snug">{aiAnalysis.croppingInstructions.compositionAdvice}</p>
-                </div>
-              )}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-center space-y-2.5">
+                <p className="text-xs text-slate-700 font-medium">
+                  {thumbnailError || 'AI thumbnail could not be generated. Please try again.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRegenerateThumbnail}
+                  disabled={isRegeneratingThumbnail}
+                  className="text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white px-3.5 py-2 rounded-lg inline-flex items-center space-x-1.5 transition-colors disabled:opacity-50 shadow-2xs cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRegeneratingThumbnail ? 'animate-spin' : ''}`} />
+                  <span>{isRegeneratingThumbnail ? 'Generating Thumbnail...' : '↻ Regenerate Thumbnail'}</span>
+                </button>
+              </div>
+            </div>
+          )}
 
-              <p className="text-[10px] text-slate-400 text-center pt-0.5">
-                Regenerating cycles through distinct 16:9 compositions using the <strong>SAME</strong> source image.
-              </p>
+          {aiAnalysis.croppingInstructions?.compositionAdvice && (
+            <div className="bg-purple-50/70 border border-purple-200/80 rounded-lg p-2 text-[11px] text-purple-900 flex items-start space-x-1.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-0.5" />
+              <p className="leading-snug">{aiAnalysis.croppingInstructions.compositionAdvice}</p>
             </div>
           )}
         </div>

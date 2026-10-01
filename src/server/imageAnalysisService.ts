@@ -53,28 +53,36 @@ export async function analyzeImageUrlWithGemini({
 Your job is to analyze an image provided by URL and produce:
 1. An SEO-friendly, attention-grabbing, concise title in ${languageLabel}.
 2. Visual understanding of the scene (main subject, key elements, context).
-3. Exact cropping and thumbnailing instructions for a 16:9 thumbnail (target 1200x675) matching the Blogger video player container.
+3. Composition and focal-point instructions for a landscape thumbnail optimized for a responsive video container (width: 100%; height: 450px; object-fit: cover).
 
-SEO TITLE GUIDELINES:
-- Must be written in ${languageLabel}.
-- Truthful and grounded in what is visible. Avoid invented facts, fake names, or fabricated claims.
-- Attention-grabbing and high click-through potential without cheap clickbait.
-- Concise (under 75 characters) to avoid search snippet truncation.
-- Example Bengali style: "বাংলাদেশে ভাইরাল হওয়া এই দৃশ্যটি নিয়ে কেন এত আলোচনা?"
-- Never use cheap clickbait like "এটা দেখলে আপনি পাগল হয়ে যাবেন!".
+SEO TITLE & FACTUAL GROUNDING RULES:
+- Must be written in natural, eloquent ${languageLabel}.
+- DISTINGUISH BETWEEN VISUAL FACT AND USER CONTEXT: Infer only what is visibly evident in the image.
+- NEVER claim or assume: "viral" (ভাইরাল), "trending" (ট্রেন্ডিং), "social media sensation" (সামাজিক মাধ্যমে নজর কাড়ল), "breaking news", "famous", or specific unverified identities/events/locations UNLESS supplied by the user.
+- Avoid repetitive generic filler phrases like "সামাজিক মাধ্যমে নজর কাড়ল...", "আলোড়ন সৃষ্টি করল...", or "ভাইরাল দৃশ্য...".
+- If the image alone is insufficient to establish an external fact, craft a curiosity-driven, truthful title describing the visible atmosphere, emotion, elements, or scene.
+- Concise (under 75 characters) to fit search snippets and mobile layouts without truncation.
+- Examples of authentic Bengali titles based on visible facts:
+  * Nature: "কুয়াশায় ঘেরা ভোরের এক শান্ত নদীর মায়াবী রূপ"
+  * Wildlife: "গাছের ডালে বসে থাকা দুর্লভ নীলকণ্ঠ পাখির অপরূপ ভঙ্গি"
+  * Urban/Life: "বৃষ্টিভেজা বিকেলে ব্যস্ত শহরের এক জীবন্ত মুহূর্ত"
+  * Portrait: "চোখের গভীরতায় লুকিয়ে থাকা না-বলা হাজারো অনুভূতির গল্প"
+- Never use cheap sensational clickbait like "এটা দেখলে আপনি পাগল হয়ে যাবেন!".
 
-CROPPING & THUMBNAILING GUIDELINES:
-- Target aspect ratio is strictly 16:9 (1200px width by 675px height).
+RESPONSIVE CONTAINER & SAFE-ZONE GUIDELINES:
+- The video container is responsive: width 100%, height 450px, with CSS object-fit: cover.
+- Do NOT assume a fixed 1200x675 rendering size; the image scales and crops across diverse mobile and desktop screen widths.
+- On mobile devices, object-fit: cover crops the left and right outer sides. On wide desktop screens, it may trim top/bottom.
+- Always identify the primary subject and ensure composition recommendations keep the subject strictly centered within the central safe area (middle 50%-60% horizontal, 60%-70% vertical).
+- Outer margins must be background/atmosphere so edge cropping never cuts off the subject.
 - Identify the focal point coordinates in percentage (0-100% X from left, 0-100% Y from top).
-- Suggest crop origin (originXPercent, originYPercent) and crop span (widthPercent, heightPercent).
-- Provide practical composition advice in ${languageLabel} explaining how to frame the subject without cutting off faces, key objects, or text.
-- Recommend composition style: 'cinematic_focus' (centered rule), 'dramatic_close' (tight subject zoom), 'rule_of_thirds' (editorial offset), or 'vivid_editorial' (vibrant contrast).`;
+- Recommend composition style: 'cinematic_focus' (centered safe rule), 'dramatic_close' (centered subject zoom), 'rule_of_thirds', or 'vivid_editorial'.`;
 
   const promptText = `Analyze this image in detail.
 Return:
 1. An SEO title in ${languageLabel}.
 2. Main subject and detected elements.
-3. Cropping and thumbnailing instructions for a 16:9 (1200x675) Blogger thumbnail.
+3. Composition and focal-point instructions optimized for a responsive landscape video container (width: 100%; height: 450px; object-fit: cover) with the subject centered in the safe zone.
 
 Respond in JSON adhering to the specified schema.`;
 

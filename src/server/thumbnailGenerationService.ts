@@ -33,17 +33,23 @@ export async function generateNativeThumbnailWithGemini({
   const isBengali = language === 'bn';
   const contextNote = subjectContext?.trim() ? `Context: ${subjectContext.trim()}. ` : '';
 
-  const promptText = `Generate a high-resolution, professional 16:9 video thumbnail based directly on this reference image. ${contextNote}
-CRITICAL REQUIREMENTS:
-- Preserve the primary subject, faces, character, and key focal elements from the reference image accurately.
-- Frame the composition in a 16:9 landscape aspect ratio suitable for a high-click-through Blogger/YouTube video player card.
-- Apply high-impact ${style} lighting, rich color grading, deep contrast, sharp focal focus, and vivid editorial polish.
-- Do NOT generate random unrelated content; the subject from the input image MUST be the hero of this 16:9 thumbnail.`;
+  const promptText = `Generate a high-impact, professional landscape video thumbnail based directly on this reference image. ${contextNote}
+
+CONTAINER & RESPONSIVE FRAMING SPECIFICATIONS:
+- The target Blogger video player container has responsive CSS: "width: 100%; height: 450px; object-fit: cover;".
+- Do NOT assume a fixed 1200x675 rendering size; the image will be dynamically scaled and cropped by the browser across diverse screen widths.
+- On mobile devices (viewports 360px - 450px wide), the 450px-high container is taller than wide, so "object-fit: cover" will crop the outer left and right margins.
+- On wider screens, "object-fit: cover" may trim top and bottom edges.
+- CRITICAL CENTRAL SAFE-ZONE COMPOSITION: Keep the primary subject, faces, character, and key focal elements strictly CENTERED within the central safe area (the middle 50%-60% of the canvas horizontally, and middle 60%-70% vertically).
+- Keep outer margins (left, right, top, bottom) filled with background environment, atmosphere, and cinematic depth so that when edge cropping occurs on any device, the hero subject is NEVER cut off and remains perfectly centered.
+- Preserve the subject, identity, and facial likeness from the reference image with high fidelity.
+- Apply professional ${style} lighting, vivid contrast, rich editorial color grading, and razor-sharp focal clarity.
+- Do NOT place any important subjects, text, or focal details near the outer edges.`;
 
   // Currently supported Gemini native image models
   const primaryModel = 'gemini-3.1-flash-lite-image';
   const fallbackModel = 'gemini-3.1-flash-image';
-  const modelsToTry = [primaryModel, fallbackModel];
+  const modelsToTry = [primaryModel, fallbackModel, 'gemini-2.5-flash-image'];
 
   let lastError: unknown = null;
 
@@ -75,9 +81,9 @@ CRITICAL REQUIREMENTS:
         },
         {
           maxRetries: 2,
-          initialDelayMs: 1500,
+          initialDelayMs: 1000,
           onRetry: (err, attempt) => {
-            console.warn(`[Thumbnail Generation] Model ${model} returned 503/UNAVAILABLE on attempt ${attempt}. Retrying...`);
+            console.warn(`[Thumbnail Generation] Model ${model} returned 503/UNAVAILABLE on attempt ${attempt}. Retrying with exponential backoff...`);
           },
         }
       );
@@ -111,7 +117,7 @@ CRITICAL REQUIREMENTS:
     } catch (err: unknown) {
       lastError = err;
       if (is503OrUnavailable(err)) {
-        console.warn(`[Thumbnail Generation] Model ${model} unavailable (503). Attempting fallback model...`);
+        console.warn(`[Thumbnail Generation] Model ${model} unavailable (503/high demand). Trying fallback...`);
         continue;
       }
       // Non-503 error (e.g. invalid key or bad payload) should fail immediately
@@ -119,11 +125,11 @@ CRITICAL REQUIREMENTS:
     }
   }
 
-  // If both models failed with 503 / high demand:
+  // If all models failed with 503 / high demand:
   if (lastError && is503OrUnavailable(lastError)) {
-    throw new Error('AI thumbnail service is temporarily busy. Please try again.');
+    throw new Error('AI thumbnail generation is temporarily unavailable. Your title was generated successfully. Please try the thumbnail again.');
   }
 
-  const message = lastError instanceof Error ? lastError.message : 'AI thumbnail generation failed.';
+  const message = lastError instanceof Error ? lastError.message : 'AI thumbnail could not be generated. Please try again.';
   throw new Error(message);
 }

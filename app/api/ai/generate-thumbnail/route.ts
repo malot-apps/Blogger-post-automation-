@@ -46,10 +46,10 @@ export async function POST(req: NextRequest) {
 
     const isBusy = is503OrUnavailable(error);
     const message = isBusy
-      ? 'AI thumbnail service is temporarily busy. Please try again.'
+      ? 'AI thumbnail generation is temporarily unavailable. Your title was generated successfully. Please try the thumbnail again.'
       : error instanceof Error
       ? error.message
-      : 'Failed to generate thumbnail with AI.';
+      : 'AI thumbnail could not be generated. Please try again.';
 
     const status = isBusy ? 503 : 500;
     return NextResponse.json({ success: false, error: message }, { status });

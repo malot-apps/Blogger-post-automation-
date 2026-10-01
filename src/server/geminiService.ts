@@ -38,14 +38,14 @@ Your task is to analyze an uploaded image and generate:
 1. An SEO-friendly, attention-grabbing, natural, concise title in ${isBengali ? 'Bengali (বাংলা)' : 'English'}.
 2. Analysis of the visual subject and focal point coordinates for a 16:9 thumbnail crop.
 
-CRITICAL RULES FOR TITLE:
-- Written strictly in ${isBengali ? 'Bengali (বাংলা)' : 'English'}.
-- Attention-grabbing and curiosity-driven while remaining truthful and grounded in the image.
-- Avoid fake claims, fabricated names, unrelated clickbait, keyword stuffing, and excessive emojis.
-- Keep the title concise (under 75 characters) so it looks great on search results, Blogger layouts, and social previews.
-- Example Bengali style: "বাংলাদেশে ভাইরাল হওয়া এই দৃশ্যটি নিয়ে কেন এত আলোচনা?"
+CRITICAL RULES FOR TITLE & TRUTHFULNESS:
+- Written strictly in natural, evocative ${isBengali ? 'Bengali (বাংলা)' : 'English'}.
+- DISTINGUISH VISUAL FACT FROM USER CONTEXT: Infer only what is visibly seen.
+- NEVER invent claims: do NOT claim viral (ভাইরাল), trending (ট্রেন্ডিং), social media sensation (সামাজিক মাধ্যমে নজর কাড়ল), breaking news, famous, or unverified people/places without user confirmation.
+- Do NOT repeat generic phrases like "সামাজিক মাধ্যমে নজর কাড়ল...".
+- If context is ambiguous, frame an honest, curiosity-driven description of the actual visible composition, expression, or atmosphere.
+- Concise (under 75 characters) so it looks clean on search results, Blogger layouts, and social previews.
 - DO NOT use cheap sensational clickbait like "এটা দেখলে আপনি পাগল হয়ে যাবেন!!!".
-- If the image context is ambiguous, frame an honest, curiosity-driven question or descriptive statement about the visible scene.
 
 CRITICAL RULES FOR THUMBNAIL FOCAL POINT:
 - Identify where the primary subject or face/focal action is located in percentages (x: 0-100 from left, y: 0-100 from top).
@@ -187,12 +187,12 @@ export async function regenerateSeoTitle({
   const isBengali = language === 'bn';
 
   const systemInstruction = `You are an expert SEO title specialist for Google Blogger.
-Generate an alternative, fresh, attention-grabbing SEO title in ${isBengali ? 'Bengali (বাংলা)' : 'English'}.
+Generate an alternative, fresh, attention-grabbing SEO title in natural ${isBengali ? 'Bengali (বাংলা)' : 'English'}.
 Rules:
 - Must be different in phrasing and angle from any previously generated titles: ${JSON.stringify(previousTitles)}
-- Honest, grounded in the actual image/context.
+- Grounded strictly in VISUAL FACT and provided context. Do NOT invent claims: no unverified "viral", "trending", "social media sensation", or fake events.
 - Natural, concise (under 75 characters), suitable for search and social clicks.
-- No cheap misleading clickbait or exaggerated claims.
+- No cheap misleading clickbait, no generic filler like "সামাজিক মাধ্যমে নজর কাড়ল...".
 - Return ONLY JSON with a "title" string field.`;
 
   const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
