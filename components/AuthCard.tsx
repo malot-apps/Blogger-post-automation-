@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { ShieldCheck, Zap, CheckCircle2, Lock, ExternalLink } from 'lucide-react';
+import { ShieldCheck, Zap, CheckCircle2, Lock, ExternalLink, Copy, Check, AlertCircle } from 'lucide-react';
+import firebaseConfig from '../firebase-applet-config.json';
 
 interface AuthCardProps {
   onSignIn: () => void;
@@ -12,6 +13,21 @@ interface AuthCardProps {
 }
 
 export function AuthCard({ onSignIn, onSignInWithRedirect, isLoading, error }: AuthCardProps) {
+  const [copied, setCopied] = useState(false);
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isDomainError = error && (error.includes('Authorized Domains') || error.includes('Domain') || error.includes('unauthorized-domain'));
+
+  const handleCopyDomain = async () => {
+    if (!currentHostname) return;
+    try {
+      await navigator.clipboard.writeText(currentHostname);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // fallback
+    }
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 sm:p-7 text-center max-w-lg mx-auto space-y-5">
       {/* Icon Badge */}
@@ -45,9 +61,55 @@ export function AuthCard({ onSignIn, onSignInWithRedirect, isLoading, error }: A
       </div>
 
       {error && (
-        <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 text-left space-y-1">
-          <p className="font-semibold">Connection Notice</p>
-          <p className="leading-relaxed">{error}</p>
+        <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 text-left space-y-2">
+          <div className="flex items-center space-x-1.5 font-semibold text-red-800">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>Connection Notice</span>
+          </div>
+          <p className="leading-relaxed text-[11px]">{error}</p>
+
+          {isDomainError && currentHostname && (
+            <div className="mt-2.5 pt-2.5 border-t border-red-200/70 space-y-2">
+              <p className="font-semibold text-slate-800 text-[11px]">
+                Quick 1-step fix in Firebase Console:
+              </p>
+              <div className="flex items-center space-x-1.5 bg-white p-1.5 rounded-lg border border-red-200 text-slate-700">
+                <code className="text-[11px] font-mono flex-1 truncate px-1">{currentHostname}</code>
+                <button
+                  type="button"
+                  onClick={handleCopyDomain}
+                  className="px-2.5 py-1 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md flex items-center space-x-1 shrink-0 transition-colors"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span className="text-emerald-700">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3 text-slate-500" />
+                      <span>Copy Domain</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="pt-1 flex items-center justify-between">
+                <a
+                  href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center space-x-1 text-[11px] font-semibold text-orange-700 hover:text-orange-800 underline"
+                >
+                  <span>Open Firebase Settings</span>
+                  <ExternalLink className="w-3 h-3 ml-0.5" />
+                </a>
+                <span className="text-[10px] text-slate-500">
+                  Project: <strong className="font-mono">{firebaseConfig.projectId}</strong>
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

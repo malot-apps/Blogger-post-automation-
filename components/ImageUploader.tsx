@@ -19,6 +19,7 @@ import {
   formatFileSize,
   type ImageProcessingResult,
 } from '@/src/lib/imageUtils';
+import { AiContentAssistant } from './AiContentAssistant';
 
 interface ImageUploaderProps {
   // Main Image
@@ -33,6 +34,10 @@ interface ImageUploaderProps {
 
   isProcessing: boolean;
   setIsProcessing: (loading: boolean) => void;
+
+  // AI Content Assistant integration
+  onApplyTitle?: (title: string) => void;
+  currentTitle?: string;
 }
 
 export function ImageUploader({
@@ -44,6 +49,8 @@ export function ImageUploader({
   onThumbnailSelected,
   isProcessing,
   setIsProcessing,
+  onApplyTitle,
+  currentTitle,
 }: ImageUploaderProps) {
   const [showMainUrlInput, setShowMainUrlInput] = useState(false);
   const [mainUrlInputValue, setMainUrlInputValue] = useState('');
@@ -83,26 +90,64 @@ export function ImageUploader({
     }
   };
 
-  const handleApplyMainUrl = () => {
+  const handleApplyMainUrl = async () => {
     const trimmed = mainUrlInputValue.trim();
-    if (!trimmed || (!trimmed.startsWith('http://') && !trimmed.startsWith('https://'))) {
-      setErrorMessage('Please enter a valid HTTP/HTTPS image URL');
+    if (!trimmed || !trimmed.startsWith('https://')) {
+      setErrorMessage('Security requirement: Please enter a secure HTTPS image URL (http:// and local URLs are prohibited).');
       return;
     }
     setErrorMessage(null);
-    onMainImageSelected(null, trimmed);
-    setShowMainUrlInput(false);
+    setIsProcessing(true);
+
+    try {
+      // Server-side verification for reachability, HTTPS, and image MIME type
+      const res = await fetch('/api/images/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verifyUrl: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.verified) {
+        throw new Error(data.error || 'Server-side verification failed: Image is not publicly accessible.');
+      }
+      onMainImageSelected(null, data.imageUrl || trimmed);
+      setShowMainUrlInput(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Image verification failed';
+      setErrorMessage(msg);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const handleApplyThumbUrl = () => {
+  const handleApplyThumbUrl = async () => {
     const trimmed = thumbUrlInputValue.trim();
-    if (!trimmed || (!trimmed.startsWith('http://') && !trimmed.startsWith('https://'))) {
-      setErrorMessage('Please enter a valid HTTP/HTTPS thumbnail URL');
+    if (!trimmed || !trimmed.startsWith('https://')) {
+      setErrorMessage('Security requirement: Please enter a secure HTTPS thumbnail URL (http:// and local URLs are prohibited).');
       return;
     }
     setErrorMessage(null);
-    onThumbnailSelected(null, trimmed);
-    setShowThumbUrlInput(false);
+    setIsProcessing(true);
+
+    try {
+      // Server-side verification for reachability, HTTPS, and image MIME type
+      const res = await fetch('/api/images/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verifyUrl: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.verified) {
+        throw new Error(data.error || 'Server-side verification failed: Thumbnail is not publicly accessible.');
+      }
+      onThumbnailSelected(null, data.imageUrl || trimmed);
+      setShowThumbUrlInput(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Thumbnail verification failed';
+      setErrorMessage(msg);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const activeMainSrc = mainImageUrlOverride || mainImageResult?.dataUrl;
@@ -298,6 +343,19 @@ export function ImageUploader({
           </div>
         )}
       </div>
+
+      {/* AI Assistant Section (SEO Title & 1200x675 Thumbnail Generator) */}
+      <AiContentAssistant
+        mainImageSrc={activeMainSrc || null}
+        onSelectMainImageTrigger={() => mainFileInputRef.current?.click()}
+        onApplyTitle={(newTitle) => onApplyTitle?.(newTitle)}
+        onApplyThumbnail={(thumbDataUrl) => {
+          setUseSeparateThumbnail(true);
+          onThumbnailSelected(null, thumbDataUrl);
+        }}
+        currentTitle={currentTitle || ''}
+        currentThumbnailSrc={thumbnailUrlOverride || thumbnailResult?.dataUrl || null}
+      />
 
       {/* 2. Separate Video Thumbnail / Cover (Optional) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">

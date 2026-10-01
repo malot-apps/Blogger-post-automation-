@@ -2,19 +2,45 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchUserBlogs, createAndPublishBloggerPost } from '@/src/server/bloggerService';
 import { renderTemplate } from '@/src/server/templateService';
 import { generateTitleFromCaption } from '@/src/lib/titleGenerator';
+import { verifyImage } from '@/src/server/imageVerificationService';
+import { uploadAndVerifyImageOnBloggerHost } from '@/src/server/bloggerImageHostService';
 
-function isValidImageUrl(url: string): boolean {
-  if (!url) return false;
-  const trimmed = url.trim().toLowerCase();
-  if (trimmed.startsWith('blob:') || trimmed.startsWith('file:') || trimmed.startsWith('content:')) {
-    return false;
-  }
-  return (
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('data:image/')
-  );
-}
+/**
+ * ARCHITECTURAL COMMENT #1:
+ * ============================================================================
+ * Why the secondary Blogger site is used as the image host:
+ * ----------------------------------------------------------------------------
+ * 1. CDN Efficiency: Blogger automatically caches images on Google's high-speed
+ *    CDN (*.blogger.googleusercontent.com / *.bp.blogspot.com).
+ * 2. Clean Separation: Uploads remain isolated on a media container blog without
+ *    polluting the public editorial blog with temporary draft assets.
+ * 3. Prevention of Bloat & Mixed-Content: Eliminates multi-megabyte base64
+ *    payloads that bloat Blogger post bodies, hurt Core Web Vitals, and damage SEO.
+ * ============================================================================
+ *
+ * ARCHITECTURAL COMMENT #2:
+ * ============================================================================
+ * Why the final URL must be verified server-side:
+ * ----------------------------------------------------------------------------
+ * 1. Zero Trust: Browser clients cannot be trusted to self-certify URL validity.
+ * 2. SSRF Protection: Prevents attackers from supplying internal/private IP targets
+ *    (e.g., cloud metadata 169.254.169.254 or localhost).
+ * 3. Reachability Guarantee: Verifies that the Google CDN asset actually exists,
+ *    returns HTTP 200, and has an image MIME type without requiring authentication.
+ * ============================================================================
+ *
+ * ARCHITECTURAL COMMENT #3:
+ * ============================================================================
+ * Why publishing is blocked when verification fails:
+ * ----------------------------------------------------------------------------
+ * 1. Editorial Integrity: Broken image icons degrade website trust, reader retention,
+ *    and brand reputation.
+ * 2. SEO Penalty: Google Search penalizes pages containing broken media or mixed content.
+ * 3. Atomic Safety: Blogger has no multi-step rollback. Once a post is published,
+ *    it is immediately syndicated to RSS readers, social cards, and subscribers.
+ *    Publishing MUST be aborted if even one image fails verification.
+ * ============================================================================
+ */
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,17 +85,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Step 3: Validate image
-    if (!imageUrl || typeof imageUrl !== 'string') {
+    // Step 3: Validate image presence
+    if (!imageUrl || typeof imageUrl !== 'string' || imageUrl.trim().length === 0) {
       return NextResponse.json(
         { error: 'Please select or upload a main image for the post.' },
-        { status: 400 }
-      );
-    }
-
-    if (!isValidImageUrl(imageUrl)) {
-      return NextResponse.json(
-        { error: 'Invalid main image format. Local device or blob: URLs cannot be used. Please upload the image or provide an HTTPS link.' },
         { status: 400 }
       );
     }
@@ -80,6 +99,112 @@ export async function POST(req: NextRequest) {
         { error: 'Please enter a caption for your post.' },
         { status: 400 }
       );
+    }
+
+    // Step 5: Ensure Main Image is uploaded to dedicated Blogger host if supplied as raw base64 data
+    let verifiedMainImageUrl = imageUrl.trim();
+
+    if (verifiedMainImageUrl.startsWith('data:image/')) {
+      const hostUpload = await uploadAndVerifyImageOnBloggerHost({
+        imageBase64OrDataUrl: verifiedMainImageUrl,
+        fileName: 'main-post-image.jpg',
+        callerBearerToken: token,
+      });
+
+      if (!hostUpload.success || !hostUpload.verified || !hostUpload.imageUrl) {
+        return NextResponse.json(
+          {
+            success: false,
+            verified: false,
+            error: `Publishing blocked: Failed to host and verify Main Image on Blogger image host: ${
+              hostUpload.error || 'Upload failed'
+            }`,
+          },
+          { status: 400 }
+        );
+      }
+      verifiedMainImageUrl = hostUpload.imageUrl;
+    }
+
+    // Step 6: Ensure Thumbnail Image is uploaded to dedicated Blogger host if supplied as raw base64 data
+    let rawThumbnailUrl = (thumbnailUrl && typeof thumbnailUrl === 'string' && thumbnailUrl.trim().length > 0)
+      ? thumbnailUrl.trim()
+      : verifiedMainImageUrl;
+
+    let verifiedThumbnailUrl = rawThumbnailUrl;
+
+    if (verifiedThumbnailUrl.startsWith('data:image/')) {
+      const thumbUpload = await uploadAndVerifyImageOnBloggerHost({
+        imageBase64OrDataUrl: verifiedThumbnailUrl,
+        fileName: 'thumbnail-cover.jpg',
+        callerBearerToken: token,
+      });
+
+      if (!thumbUpload.success || !thumbUpload.verified || !thumbUpload.imageUrl) {
+        return NextResponse.json(
+          {
+            success: false,
+            verified: false,
+            error: `Publishing blocked: Failed to host and verify Video Player Thumbnail on Blogger image host: ${
+              thumbUpload.error || 'Upload failed'
+            }`,
+          },
+          { status: 400 }
+        );
+      }
+      verifiedThumbnailUrl = thumbUpload.imageUrl;
+    }
+
+    // ========================================================================
+    // MANDATORY SERVER-SIDE VERIFICATION LOOP:
+    // Before creating the post on Blogger, re-verify EVERY image URL (main image
+    // and thumbnail) present in the request using the same 'verifyImage' utility
+    // to ensure they remain publicly accessible. Block publishing and return a
+    // descriptive error if any image fails.
+    // ========================================================================
+    const imagesToVerify: Array<{
+      key: 'main' | 'thumbnail';
+      label: string;
+      url: string;
+    }> = [
+      {
+        key: 'main',
+        label: 'Main Post Image',
+        url: verifiedMainImageUrl,
+      },
+    ];
+
+    if (verifiedThumbnailUrl && verifiedThumbnailUrl !== verifiedMainImageUrl) {
+      imagesToVerify.push({
+        key: 'thumbnail',
+        label: 'Video Player Thumbnail',
+        url: verifiedThumbnailUrl,
+      });
+    }
+
+    for (const imageItem of imagesToVerify) {
+      const verification = await verifyImage(imageItem.url);
+
+      if (!verification.isValid || !verification.verifiedUrl) {
+        return NextResponse.json(
+          {
+            success: false,
+            verified: false,
+            failedImage: imageItem.label,
+            failedUrl: imageItem.url,
+            error: `Publishing blocked: Server-side verification loop failed for ${imageItem.label}. ${
+              verification.error || 'The image URL is not publicly accessible.'
+            } Never publish a post containing broken, unverified, or private image URLs.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      if (imageItem.key === 'main') {
+        verifiedMainImageUrl = verification.verifiedUrl;
+      } else if (imageItem.key === 'thumbnail') {
+        verifiedThumbnailUrl = verification.verifiedUrl;
+      }
     }
 
     // Determine final title
@@ -98,27 +223,15 @@ export async function POST(req: NextRequest) {
         .filter(Boolean);
     }
 
-    // Rule: If separate thumbnail not provided, automatically fallback to main imageUrl
-    let effectiveThumbnailUrl = imageUrl.trim();
-    if (thumbnailUrl && typeof thumbnailUrl === 'string' && thumbnailUrl.trim().length > 0) {
-      if (!isValidImageUrl(thumbnailUrl)) {
-        return NextResponse.json(
-          { error: 'Invalid thumbnail image format. Local device or blob: URLs cannot be used.' },
-          { status: 400 }
-        );
-      }
-      effectiveThumbnailUrl = thumbnailUrl.trim();
-    }
-
-    // Step 5 & 6: Render /templates/blogger-post-template.html with all 5 dynamic placeholders
+    // Step 7: Render /templates/blogger-post-template.html with VERIFIED HTTPS image URLs
     const postHtml = renderTemplate(customTemplate, {
       title: finalTitle,
-      imageUrl: imageUrl.trim(),
-      thumbnailUrl: effectiveThumbnailUrl,
+      imageUrl: verifiedMainImageUrl,
+      thumbnailUrl: verifiedThumbnailUrl,
       caption: caption.trim(),
     });
 
-    // Step 7 & 8: Call Blogger API v3 to create and publish post to THAT USER's selected blog
+    // Step 8: Call Blogger API v3 to create and publish post to THAT USER's selected blog
     const publishedPost = await createAndPublishBloggerPost(token, {
       blogId,
       title: finalTitle,
@@ -127,7 +240,7 @@ export async function POST(req: NextRequest) {
       isDraft: Boolean(isDraft),
     });
 
-    // Step 9: Return the real published URL
+    // Step 9: Return the real published URL and verified images
     return NextResponse.json({
       success: true,
       post: {
@@ -135,7 +248,8 @@ export async function POST(req: NextRequest) {
         blogId: publishedPost.blog?.id || blogId,
         title: publishedPost.title,
         url: publishedPost.url,
-        thumbnailUrl: effectiveThumbnailUrl,
+        imageUrl: verifiedMainImageUrl,
+        thumbnailUrl: verifiedThumbnailUrl,
         published: publishedPost.published,
         labels: publishedPost.labels || parsedLabels,
         content: postHtml,

@@ -242,7 +242,19 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     if (errCode === 'auth/unauthorized-domain') {
       const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
       throw new Error(
-        `OAuth not configured: Domain "${currentHost}" is not authorized. Please verify that "${PRODUCTION_HOSTNAME}" and "${currentHost}" are registered in Firebase Console > Authentication > Settings > Authorized domains.`
+        `Domain "${currentHost}" is not yet in Firebase Authorized Domains. To authorize it: open Firebase Console for project "${firebaseConfig.projectId}" -> Authentication -> Settings -> Authorized domains, and add "${currentHost}".`
+      );
+    }
+
+    const rawMsg = error instanceof Error ? error.message : String(error);
+
+    if (
+      errCode === 'auth/identity-toolkit-api-has-not-been-used-in-project' ||
+      rawMsg.includes('identity-toolkit-api') ||
+      rawMsg.includes('identitytoolkit.googleapis.com')
+    ) {
+      throw new Error(
+        `Firebase Authentication (Identity Toolkit API) is not enabled for project "${firebaseConfig.projectId}". Please enable it in Google Cloud Console or Firebase Console to allow sign in.`
       );
     }
 
@@ -252,7 +264,6 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       );
     }
 
-    const rawMsg = error instanceof Error ? error.message : String(error);
     if (
       errCode === 'auth/access-denied' ||
       rawMsg.includes('access_denied') ||

@@ -560,6 +560,8 @@ export default function Home() {
               }}
               isProcessing={isProcessingImage}
               setIsProcessing={setIsProcessingImage}
+              onApplyTitle={setTitle}
+              currentTitle={title}
             />
 
             {/* Step 2 & 3: Caption, Options & Publish Action */}
