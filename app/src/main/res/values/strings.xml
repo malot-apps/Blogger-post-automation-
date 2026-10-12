@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Blogger Auto Publisher</string>
+    <string name="app_tagline">Fast 1-Tap Mobile Publishing</string>
+    <string name="action_publish">PUBLISH TO BLOGGER</string>
+    <string name="action_preview">Preview Blogger Post HTML</string>
+    <string name="action_generate_ai">Generate with AI</string>
+    <string name="title_optional">Custom Post Title (Optional)</string>
+    <string name="caption_label">Enter Caption</string>
+    <string name="labels_label">Blogger Labels / Categories (Optional)</string>
+</resources>

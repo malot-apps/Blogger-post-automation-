@@ -1,0 +1,11 @@
+<resources>
+    <color name="primary_orange">#FF6F00</color>
+    <color name="primary_dark">#E65100</color>
+    <color name="accent_amber">#FFB300</color>
+    <color name="purple_accent">#7C3AED</color>
+    <color name="background_light">#F8FAFC</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="text_primary">#0F172A</color>
+    <color name="text_secondary">#64748B</color>
+    <color name="border_light">#E2E8F0</color>
+</resources>

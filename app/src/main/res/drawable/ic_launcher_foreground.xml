@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Centered within 66dp safe zone (canvas is 108dp) -->
+    <!-- Document background card -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M34,26 L64,26 L76,38 L76,82 C76,84.2 74.2,86 72,86 L34,86 C31.8,86 30,84.2 30,82 L30,30 C30,27.8 31.8,26 34,26 Z" />
+    <!-- Folded corner -->
+    <path
+        android:fillColor="#FFE0B2"
+        android:pathData="M64,26 L76,38 L64,38 Z" />
+    <!-- Photo frame inside document -->
+    <path
+        android:fillColor="#FFFF8F00"
+        android:pathData="M38,36 L68,36 C69.1,36 70,36.9 70,38 L70,54 C70,55.1 69.1,56 68,56 L38,56 C36.9,56 36,55.1 36,54 L36,38 C36,36.9 36.9,36 38,36 Z" />
+    <!-- Mountain and sun in photo frame -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M40,52 L48,44 L54,49 L60,42 L66,52 Z" />
+    <!-- Sun -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M62,40 A2,2 0 1,1 62,39.99 Z" />
+    <!-- Text lines -->
+    <path
+        android:fillColor="#FFD0D5DD"
+        android:pathData="M36,62 L70,62 C70.5,62 71,62.5 71,63 C71,63.5 70.5,64 70,64 L36,64 C35.5,64 35,63.5 35,63 C35,62.5 35.5,62 36,62 Z" />
+    <path
+        android:fillColor="#FFD0D5DD"
+        android:pathData="M36,68 L56,68 C56.5,68 57,68.5 57,69 C57,69.5 56.5,70 56,70 L36,70 C35.5,70 35,69.5 35,69 C35,68.5 35.5,68 36,68 Z" />
+    <!-- Upward Publishing Arrow Badge -->
+    <path
+        android:fillColor="#FFE65100"
+        android:pathData="M66,66 L78,66 C80.2,66 82,67.8 82,70 L82,82 C82,84.2 80.2,86 78,86 L66,86 C63.8,86 62,84.2 62,82 L62,70 C62,67.8 63.8,66 66,66 Z" />
+    <!-- Arrow inside badge -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M72,69 L78,75 L74.5,75 L74.5,82 L69.5,82 L69.5,75 L66,75 Z" />
+</vector>
