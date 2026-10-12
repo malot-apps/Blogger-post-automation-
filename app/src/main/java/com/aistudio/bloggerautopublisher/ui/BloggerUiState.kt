@@ -42,6 +42,7 @@ data class BloggerUiState(
     val isRegeneratingThumbnail: Boolean = false,
     val currentThumbnailStyle: CompositionStyle = CompositionStyle.CINEMATIC_FOCUS,
     val previousTitles: List<String> = emptyList(),
+    val geminiApiKey: String = "",
     val aiError: String? = null,
 
     // Master Template

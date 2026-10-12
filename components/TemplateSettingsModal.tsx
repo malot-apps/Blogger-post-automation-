@@ -309,11 +309,11 @@ function TemplateSettingsDialog({
                 <div className="flex items-center space-x-2">
                   <Key className="w-4 h-4 text-orange-600" />
                   <span className="text-xs font-bold text-slate-800">
-                    Personal Gemini API Key (Optional)
+                    Personal Gemini API Key
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Provide your personal Google Gemini API key to use your own quota and model tier. If empty, the server environment key will be used automatically.
+                  Enter your Google Gemini API key to power AI content tools and thumbnail creation. Your key is stored locally in your browser and used securely for your own requests.
                 </p>
 
                 <div className="relative">

@@ -51,6 +51,11 @@ class BloggerViewModel(
                 _uiState.update { it.copy(postHistory = history) }
             }
         }
+        viewModelScope.launch {
+            repository.geminiApiKey.collect { key ->
+                _uiState.update { it.copy(geminiApiKey = key) }
+            }
+        }
 
         // Auto sign-in demo session on launch so the user can immediately test all features
         if (repository.currentUser.value == null) {
@@ -213,9 +218,11 @@ class BloggerViewModel(
             }
 
             try {
+                val userKey = _uiState.value.geminiApiKey.trim().ifEmpty { null }
                 val analysis = GeminiApiService.analyzeImage(
                     imageBase64 = _uiState.value.mainImage?.base64Data,
-                    language = _uiState.value.aiLanguage
+                    language = _uiState.value.aiLanguage,
+                    apiKey = userKey
                 )
 
                 // Generate 16:9 thumbnail if bitmap is available
@@ -257,9 +264,11 @@ class BloggerViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isRegeneratingTitle = true, aiError = null) }
             try {
+                val userKey = _uiState.value.geminiApiKey.trim().ifEmpty { null }
                 val newTitle = GeminiApiService.regenerateTitle(
                     language = _uiState.value.aiLanguage,
-                    previousTitles = _uiState.value.previousTitles
+                    previousTitles = _uiState.value.previousTitles,
+                    apiKey = userKey
                 )
                 _uiState.update {
                     it.copy(
@@ -330,6 +339,10 @@ class BloggerViewModel(
 
     fun resetTemplate() {
         repository.resetTemplate()
+    }
+
+    fun saveGeminiApiKey(key: String) {
+        repository.saveGeminiApiKey(key)
     }
 
     fun openHistory() {

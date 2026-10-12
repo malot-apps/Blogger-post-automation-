@@ -22,7 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircleOutline
-import androidx.compose.material.icons.filled.CheckCircle2
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.OpenInNew
@@ -84,7 +84,7 @@ fun SuccessScreenView(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.CheckCircle2,
+                imageVector = Icons.Default.CheckCircle,
                 contentDescription = "Success",
                 tint = Emerald600,
                 modifier = Modifier.size(40.dp)

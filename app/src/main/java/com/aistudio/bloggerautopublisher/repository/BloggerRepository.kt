@@ -33,6 +33,9 @@ class BloggerRepository(context: Context) {
     private val _postHistory = MutableStateFlow<List<PublishedPost>>(loadSavedPosts())
     val postHistory: StateFlow<List<PublishedPost>> = _postHistory.asStateFlow()
 
+    private val _geminiApiKey = MutableStateFlow(prefs.getString("gemini_api_key", "").orEmpty())
+    val geminiApiKey: StateFlow<String> = _geminiApiKey.asStateFlow()
+
     private fun loadSavedUser(): UserProfile? {
         val userJson = prefs.getString("user_profile", null) ?: return null
         return try {
@@ -51,11 +54,17 @@ class BloggerRepository(context: Context) {
         }
     }
 
+    fun saveGeminiApiKey(key: String) {
+        val trimmed = key.trim()
+        prefs.edit().putString("gemini_api_key", trimmed).apply()
+        _geminiApiKey.value = trimmed
+    }
+
     fun signInDemoUser() {
         val user = UserProfile(
             userId = "user_" + UUID.randomUUID().toString().take(8),
-            email = "tonmoymir9@gmail.com",
-            displayName = "Tonmoy Mir",
+            email = "creator@example.com",
+            displayName = "Blogger Creator",
             photoUrl = null,
             defaultBlogId = "blog_daily_stories_101"
         )

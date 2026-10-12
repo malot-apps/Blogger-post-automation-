@@ -44,7 +44,7 @@ import com.aistudio.bloggerautopublisher.util.ImageOptimizer
 fun BloggerApp(viewModel: BloggerViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val snackbarHostState = remember { SnackbarHostStateState() }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     // Back handlers for dialogs
@@ -215,8 +215,10 @@ fun BloggerApp(viewModel: BloggerViewModel) {
             isOpen = uiState.isSettingsOpen,
             onClose = { viewModel.closeSettings() },
             currentTemplate = uiState.customTemplate,
+            currentGeminiApiKey = uiState.geminiApiKey,
             onSaveTemplate = { viewModel.saveTemplate(it) },
-            onResetTemplate = { viewModel.resetTemplate() }
+            onResetTemplate = { viewModel.resetTemplate() },
+            onSaveGeminiApiKey = { viewModel.saveGeminiApiKey(it) }
         )
 
         SetupGuideDialog(
@@ -225,5 +227,3 @@ fun BloggerApp(viewModel: BloggerViewModel) {
         )
     }
 }
-
-private fun SnackbarHostStateState(): SnackbarHostState = SnackbarHostState()
