@@ -42,19 +42,20 @@ function TemplateSettingsDialog({
   const [isReloading, setIsReloading] = useState(false);
 
   // Gemini Settings State
-  const [geminiApiKey, setGeminiApiKey] = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [aiLanguage, setAiLanguage] = useState<'bn' | 'en'>('bn');
-  const [keySavedStatus, setKeySavedStatus] = useState<string | null>(null);
-
-  useEffect(() => {
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      const savedKey = localStorage.getItem(STORAGE_KEY_GEMINI) || '';
-      const savedLang = (localStorage.getItem(STORAGE_KEY_AI_LANG) as 'bn' | 'en') || 'bn';
-      setGeminiApiKey(savedKey);
-      setAiLanguage(savedLang);
+      return localStorage.getItem(STORAGE_KEY_GEMINI) || '';
     }
-  }, []);
+    return '';
+  });
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [aiLanguage, setAiLanguage] = useState<'bn' | 'en'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem(STORAGE_KEY_AI_LANG) as 'bn' | 'en') || 'bn';
+    }
+    return 'bn';
+  });
+  const [keySavedStatus, setKeySavedStatus] = useState<string | null>(null);
 
   const handleResetToDefault = () => {
     setTemplateText(DEFAULT_MASTER_TEMPLATE);

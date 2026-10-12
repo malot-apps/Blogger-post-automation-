@@ -11,17 +11,24 @@
 
 ## 📥 Android APK Download & Installation
 
-The application is built automatically on every release via **GitHub Actions**.
+The Android debug APK is built automatically on every commit and release via **GitHub Actions**.
 
-- **Latest APK Release**: [Download BloggerPostAutomationAI-debug.apk](../../releases/latest)
-- **Minimum Requirements**: Android 8.0 (Oreo / API Level 26) or higher.
-- **Architecture**: ARM64 / ARMv7 / x86_64 compatible.
+### Download Methods:
+1. **GitHub Releases (Version Tags)**:
+   - Navigate to [Releases](https://github.com/malot-apps/Blogger-post-automation-/releases).
+   - Under the latest version (e.g., `v1.0.0`), download **`BloggerPostAutomationAI-debug.apk`**.
+2. **GitHub Actions Workflow Artifacts (Latest Commits)**:
+   - Go to the **Actions** tab on GitHub: [Blogger-post-automation- Actions](https://github.com/malot-apps/Blogger-post-automation-/actions/workflows/android-build.yml).
+   - Click the most recent workflow run.
+   - Scroll down to the **Artifacts** section at the bottom and download **`BloggerPostAutomationAI-apk`**.
+   - Unzip the downloaded archive to access `BloggerPostAutomationAI-debug.apk`.
 
 ### How to Install on Android:
-1. Download `BloggerPostAutomationAI-debug.apk` directly on your Android phone or tablet.
-2. Tap the downloaded file in your Notification Center or Downloads folder.
-3. If prompted, toggle **"Allow from this source"** for your browser or file manager.
-4. Tap **Install** and launch **Blogger Post Automation AI**.
+1. Transfer or download `BloggerPostAutomationAI-debug.apk` directly on your Android phone or tablet (Android 8.0+ / Oreo / API Level 26 or higher).
+2. Tap the downloaded APK in your Downloads folder or notification bar.
+3. If prompted with *"For your security, your phone is not allowed to install unknown apps from this source"*, tap **Settings** and enable **"Allow from this source"**.
+4. Tap **Install** and open **Blogger Post Automation AI**.
+5. In the app or web interface, open **Settings** to enter your own personal **Gemini API Key**. The key is stored securely in your private device session and never exposed or hardcoded.
 
 ---
 
@@ -90,7 +97,7 @@ npm run dev
 
 ### Compiling the Android APK locally:
 ```bash
-gradle assembleDebug
+./gradlew assembleDebug
 # Generated APK will be in:
 # app/build/outputs/apk/debug/app-debug.apk
 ```

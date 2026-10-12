@@ -11,6 +11,7 @@ export interface GenerateThumbnailParams {
   subjectContext?: string;
   style?: string;
   language?: 'bn' | 'en';
+  customApiKey?: string;
 }
 
 export interface GeneratedThumbnailResult {
@@ -25,8 +26,9 @@ export async function generateNativeThumbnailWithGemini({
   subjectContext,
   style = 'cinematic',
   language = 'bn',
+  customApiKey,
 }: GenerateThumbnailParams): Promise<GeneratedThumbnailResult> {
-  const ai = getGenAiClient();
+  const ai = getGenAiClient(customApiKey);
   const { data: base64Data, mimeType } = await resolveImageToInlineData(mainImageSrc);
 
   // Construct a prompt specifically instructing the image generation model to use the reference image

@@ -5,7 +5,7 @@ import { is503OrUnavailable } from '@/src/server/geminiUtils';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { image, imageUrl, subjectContext, style = 'cinematic', language = 'bn' } = body;
+    const { image, imageUrl, subjectContext, style = 'cinematic', language = 'bn', customApiKey: bodyApiKey } = body;
     const targetImage = imageUrl || image;
 
     if (!targetImage || typeof targetImage !== 'string') {
@@ -15,10 +15,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    const headerKey = req.headers.get('x-gemini-key');
+    const customApiKey = (bodyApiKey || headerKey || '').trim() || undefined;
+
+    if (!customApiKey && !process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { success: false, error: 'GEMINI_API_KEY is not configured on the server.' },
-        { status: 500 }
+        { success: false, error: 'Gemini API key is not configured. Please enter your Gemini API key in Settings or configure GEMINI_API_KEY on the server.' },
+        { status: 400 }
       );
     }
 
@@ -27,6 +30,7 @@ export async function POST(req: NextRequest) {
       subjectContext,
       style,
       language: language === 'en' ? 'en' : 'bn',
+      customApiKey,
     });
 
     if (!result.success || !result.thumbnailUrl) {
