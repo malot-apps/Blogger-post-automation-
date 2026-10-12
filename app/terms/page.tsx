@@ -98,7 +98,7 @@ export default function TermsOfServicePage() {
             <span>7. Contact</span>
           </h2>
           <p className="text-slate-600 leading-relaxed text-sm">
-            For questions regarding these Terms, please contact us at: <a href="mailto:tonmoymir9@gmail.com" className="text-orange-600 underline font-medium">tonmoymir9@gmail.com</a>.
+            For questions regarding these Terms, please contact us at: <a href="mailto:malotshome27@gmail.com" className="text-orange-600 underline font-medium">malotshome27@gmail.com</a>.
           </p>
         </section>
 

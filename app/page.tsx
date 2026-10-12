@@ -500,7 +500,7 @@ export default function Home() {
               </div>
 
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                <span>Developer Contact: <a href="mailto:tonmoymir9@gmail.com" className="text-orange-600 underline font-medium">tonmoymir9@gmail.com</a></span>
+                <span>Developer Contact: <a href="mailto:malotshome27@gmail.com" className="text-orange-600 underline font-medium">malotshome27@gmail.com</a></span>
                 <Link href="/privacy" className="text-orange-600 underline font-medium">Read Privacy Policy</Link>
               </div>
             </div>

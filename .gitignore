@@ -1,3 +1,4 @@
+# Dependencies & Web build
 node_modules/
 .next/
 coverage/
@@ -5,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Android build outputs & Gradle cache
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+local.properties

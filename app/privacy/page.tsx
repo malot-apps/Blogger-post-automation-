@@ -140,8 +140,8 @@ export default function PrivacyPolicyPage() {
             </li>
             <li>
               <strong>Data Deletion Request:</strong> You may request the deletion of any stored post history records or profile preferences by emailing us at{' '}
-              <a href="mailto:tonmoymir9@gmail.com" className="text-orange-600 underline font-medium">
-                tonmoymir9@gmail.com
+              <a href="mailto:malotshome27@gmail.com" className="text-orange-600 underline font-medium">
+                malotshome27@gmail.com
               </a>.
             </li>
           </ul>
@@ -159,7 +159,7 @@ export default function PrivacyPolicyPage() {
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-sm space-y-1">
             <p><strong>Application:</strong> Blogger Auto Publisher</p>
             <p><strong>Production Domain:</strong> https://blogger-post-automation.vercel.app</p>
-            <p><strong>Developer Contact:</strong> <a href="mailto:tonmoymir9@gmail.com" className="text-orange-600 underline">tonmoymir9@gmail.com</a></p>
+            <p><strong>Developer Contact:</strong> <a href="mailto:malotshome27@gmail.com" className="text-orange-600 underline">malotshome27@gmail.com</a></p>
           </div>
         </section>
 

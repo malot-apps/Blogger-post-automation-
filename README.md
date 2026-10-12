@@ -1,104 +1,102 @@
 # Blogger Post Automation AI
 
 [![Android Build & Release](https://github.com/malot-apps/Blogger-post-automation-/actions/workflows/android-build.yml/badge.svg)](https://github.com/malot-apps/Blogger-post-automation-/actions/workflows/android-build.yml)
-[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Web-blue.svg)](https://github.com/malot-apps/Blogger-post-automation-)
-[![Gemini AI](https://img.shields.io/badge/AI-Gemini%203.8%20Flash-orange.svg)](https://ai.google.dev/)
+[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Web%20%28Vercel%29-blue.svg)](https://github.com/malot-apps/Blogger-post-automation-)
+[![Gemini AI](https://img.shields.io/badge/AI-Google%20Gemini-orange.svg)](https://ai.google.dev/)
 [![Blogger API](https://img.shields.io/badge/Blogger%20API-v3-green.svg)](https://developers.google.com/blogger)
 
-**Blogger Post Automation AI** is an enterprise-grade, mobile-first publishing platform and Android application built with Kotlin, Jetpack Compose, Next.js, and Google Gemini AI. It enables creators to format, enhance, proofread, and publish high-converting image, video-thumbnail, and caption articles directly to their Google Blogger blogs with a single tap.
+**Blogger Post Automation AI** is a dual-platform publishing suite featuring a modern **Next.js Web application** (deployable on Vercel) and a native **Kotlin Android application** (built with Jetpack Compose & Material Design 3). It empowers content creators to format, proofread, generate catchy SEO titles, compose 16:9 thumbnails, and publish articles directly to Google Blogger blogs with a single tap.
 
 ---
 
 ## 📥 Android APK Download & Installation
 
-The Android debug APK is built automatically on every commit and release via **GitHub Actions**.
+The Android debug APK is built automatically on every commit, pull request, and release via **GitHub Actions**.
 
 ### Download Methods:
-1. **GitHub Releases (Version Tags)**:
-   - Navigate to [Releases](https://github.com/malot-apps/Blogger-post-automation-/releases).
-   - Under the latest version (e.g., `v1.0.0`), download **`BloggerPostAutomationAI-debug.apk`**.
-2. **GitHub Actions Workflow Artifacts (Latest Commits)**:
-   - Go to the **Actions** tab on GitHub: [Blogger-post-automation- Actions](https://github.com/malot-apps/Blogger-post-automation-/actions/workflows/android-build.yml).
-   - Click the most recent workflow run.
-   - Scroll down to the **Artifacts** section at the bottom and download **`BloggerPostAutomationAI-apk`**.
-   - Unzip the downloaded archive to access `BloggerPostAutomationAI-debug.apk`.
+1. **GitHub Actions Artifacts (Latest Commits)**:
+   - Go to the **Actions** tab: [Blogger-post-automation- Actions](https://github.com/malot-apps/Blogger-post-automation-/actions/workflows/android-build.yml).
+   - Click the latest successful workflow run.
+   - Scroll to **Artifacts** at the bottom and download **`BloggerPostAutomationAI-apk`**.
+   - Extract the ZIP to obtain `BloggerPostAutomationAI-debug.apk`.
+2. **GitHub Releases (Version Tags)**:
+   - Go to [Releases](https://github.com/malot-apps/Blogger-post-automation-/releases).
+   - Under the release tag (e.g., `v1.0.0`), download **`BloggerPostAutomationAI-debug.apk`**.
 
-### How to Install on Android:
-1. Transfer or download `BloggerPostAutomationAI-debug.apk` directly on your Android phone or tablet (Android 8.0+ / Oreo / API Level 26 or higher).
-2. Tap the downloaded APK in your Downloads folder or notification bar.
-3. If prompted with *"For your security, your phone is not allowed to install unknown apps from this source"*, tap **Settings** and enable **"Allow from this source"**.
-4. Tap **Install** and open **Blogger Post Automation AI**.
-5. In the app or web interface, open **Settings** to enter your own personal **Gemini API Key**. The key is stored securely in your private device session and never exposed or hardcoded.
+### Installation on Android:
+1. Open the downloaded APK on your Android device (Android 8.0+ / API 26 or higher).
+2. If prompted with *"Install unknown apps"*, tap **Settings** and toggle **"Allow from this source"**.
+3. Tap **Install** and open **Blogger Post Automation AI**.
+4. Tap **Settings (⚙️)** in the top bar to enter your own personal **Google Gemini API Key**.
+
+---
+
+## 🔒 Security & Privacy Policy (Zero Hardcoded Keys)
+
+To protect user quotas and prevent accidental exposure:
+1. **No Shared or Hardcoded API Keys**: No developer or personal Gemini API keys are embedded anywhere in the source code, build configs, or deployment scripts.
+2. **Bring Your Own Key (BYOK)**:
+   - **On the Web**: Users enter their key in **Settings ➔ Gemini AI Key**. It is saved in their private browser storage (`localStorage`) and forwarded securely over HTTPS via request headers (`x-gemini-key`).
+   - **On Android**: Users enter their key in **Publisher Settings ➔ Gemini AI Key Tab**. It is stored securely in encrypted device `SharedPreferences` and used directly for Google Generative AI endpoints.
+3. **Revocation Notice**: Any previously exposed developer API keys have been revoked and replaced with strict user-supplied authentication.
+4. **Free Key Generation**: Users can generate their own free API key in seconds at [Google AI Studio](https://aistudio.google.com/app/apikey).
 
 ---
 
 ## 🚀 Key Features
 
-### 1. 🌐 Public Multi-User Google Authentication
-- **Universal Multi-User Sign-In**: Any user can securely sign in with their own Google account. No fixed accounts or developer email hardcoding.
-- **Isolated User Sessions**: Each account maintains its own OAuth session, Blogger blog list, selected default blog, and Firestore post history.
-- **Granular OAuth Permissions**: Requests only user identity and `https://www.googleapis.com/auth/blogger`. Tokens are never shared or logged.
-- **Instant Revocation**: Users can disconnect their session at any time or revoke permissions via [Google Security Settings](https://myaccount.google.com/permissions).
+### 1. 🌐 Google Account & Blogger Integration
+- Multi-user authentication supporting any Google account.
+- Queries user-owned Blogger blogs via Blogger API v3 (`/users/self/blogs`).
+- Publishes drafts or live posts with automatic thumbnail association and label categories.
 
-### 2. 🤖 Gemini AI Content Suite
-- **Custom User API Key**: Users can provide their own Gemini API key in **Settings**, using their private quota and tier without exposing keys to other users.
-- **Multilingual Support (বাংলা & English)**: Native content generation, SEO headlines, and natural copy in both Bengali and English.
-- **Smart Image Analysis**: Visual scene understanding, focal-point coordinate detection ($x, y$ percentages), and automatic 16:9 thumbnail crop suggestions.
-- **Article Rewriter & Proofreader**: Rewrites rough drafts into polished, high-readability Blogger HTML articles with `<h2>`, `<h3>` headings, meta descriptions, and bullet points.
-- **SEO & Readability Auditor**: Instant scoring (0–100), word count, keyword density analysis, and actionable recommendations.
-- **Label & Hashtag Generator**: Automatically extracts high-traffic category labels formatted for Blogger and social media discovery.
+### 2. 🤖 Gemini AI Suite (বাংলা & English)
+- **Visual Image Analysis**: Detects primary subjects, scene context, and focal-point coordinates ($x, y$ percentages).
+- **SEO Title Generator**: Creates high-engagement titles under 70 characters with one-tap title regeneration.
+- **Bilingual Copywriting**: Native quality content generation in both Bengali and English.
+- **Article Formatting**: Converts draft notes into structured Blogger HTML with headings and bullet points.
 
-### 3. 🔄 Blogger Site-to-Site Post Import
-- **Instant Blog Discovery by URL**: Paste any public or owned Blogger URL (e.g., `https://myblog.blogspot.com` or custom domain).
-- **Dual API & Feed Pipeline**: Fetches posts via Google Blogger API v3 or the standard public Blogger Atom/JSON feed.
-- **Comprehensive Post Extraction**: Extracts post titles, complete HTML contents, author info, published dates, category labels, and all embedded images.
-- **AI Enhancement**: Preview any imported article and run one-tap AI enhancement to rewrite, reformat, and translate before publishing.
-- **One-Tap & Bulk Publishing**: Publish imported posts individually or in bulk directly to the user's chosen target Blogger blog.
+### 3. 🎨 16:9 Video-Style Thumbnail Composer
+- Crops portrait and square images into 16:9 landscape aspect ratio (1200×675) centered on the AI-detected focal point.
+- 4 preset composition styles:
+  1. *Cinematic Focus* (Centered focal zoom with subtle play button)
+  2. *Gradient Overlay* (Bottom gradient scrim for text readability)
+  3. *Split Card* (Structured editorial card layout)
+  4. *Minimalist Badge* (Clean frame with category badge)
 
-### 4. 🎨 Master HTML Template Engine & 16:9 Thumbnail Composer
-- **Dynamic Variable Substitution**: Supports `{{TITLE}}`, `{{IMAGE_URL}}`, `{{THUMBNAIL_URL}}`, `{{CAPTION}}`, and `{{PUBLISHED_DATE}}`.
-- **4 Thumbnail Composition Styles**:
-  1. *Cinematic Focus* (Centered zoom with video play overlay)
-  2. *Dramatic Close-Up* (Tight facial/object crop)
-  3. *Rule of Thirds* (Asymmetric editorial layout)
-  4. *Vivid Editorial* (High-saturation cover card)
-- **Responsive In-App Preview**: Toggle between Mobile (375px) and Desktop (100%) views before live publishing.
+### 4. 📝 Master HTML Template Customizer
+- Supports variable tokens: `{{TITLE}}`, `{{IMAGE_URL}}`, `{{THUMBNAIL_URL}}`, `{{CAPTION}}`, `{{PUBLISHED_DATE}}`.
+- Live in-app preview with toggles for Mobile (375px) and Desktop (100%) layouts.
 
 ---
 
-## 🏗️ Architecture & Technologies
+## 🏗️ Architecture & Dual-Platform Support
 
-| Layer | Technologies |
+Both applications coexist in this repository:
+
+| Layer | Technologies & Specs |
 | :--- | :--- |
-| **Android Client** | Kotlin 2.0, Jetpack Compose (M3), MVVM, Coroutines, StateFlow, Coil, OkHttp |
-| **Web Client** | Next.js 15 (App Router), React 19, Tailwind CSS v4, Lucide Icons |
-| **AI Integration** | Google GenAI SDK (`@google/genai`), Models: `gemini-3.8-flash`, `gemini-3.1-flash-lite` |
-| **Cloud & Database** | Firebase Firestore (per-user security rules), Google Cloud Identity |
-| **CI/CD** | GitHub Actions (`.github/workflows/android-build.yml`), automated release asset tagging |
+| **Android Application** | Kotlin 2.0.21, Jetpack Compose (M3), AndroidX, OkHttp 4.12, Coil, Coroutines, StateFlow, Android SDK 35, Gradle 8.10.2 |
+| **Web Application** | Next.js 15 (App Router), React 19, Tailwind CSS v4, Lucide Icons, TypeScript 5.9 |
+| **Web Hosting** | Vercel Serverless (configured with dynamic standalone omission for zero-friction Vercel builds) |
+| **CI/CD Automation** | GitHub Actions (`.github/workflows/android-build.yml`), automated APK build, verification, and artifact upload |
 
 ---
 
-## 🔒 Security & Privacy Architecture
+## 🛠️ Local Development & Build Commands
 
-1. **Zero-Trust Token Management**: Google OAuth access tokens are handled ephemerally. They are passed directly to Google's Blogger endpoints and are never written to unauthenticated databases.
-2. **Server-Side API Secret Protection**: Gemini API keys entered by users are transmitted only over encrypted HTTPS to server endpoints and never logged or exposed in public client bundles.
-3. **Firestore Multi-Tenant Security Rules**: Firestore security rules restrict reading and writing post history strictly to `request.auth.uid == userId`. No cross-tenant data leakage is possible.
-
----
-
-## 🛠️ Local Development & Build
-
-### Running the Web Platform:
+### Run Next.js Web Platform:
 ```bash
 npm install
 npm run dev
 # Open http://localhost:3000
 ```
 
-### Compiling the Android APK locally:
+### Build Android APK Locally:
 ```bash
-./gradlew assembleDebug
-# Generated APK will be in:
+# Ensure gradle.properties contains android.useAndroidX=true
+./gradlew assembleDebug --stacktrace
+# Output APK location:
 # app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -106,4 +104,4 @@ npm run dev
 
 ## 📄 License & Attribution
 
-Developed with Google AI Studio and Jetpack Compose. All Blogger rights belong to Google LLC.
+Developed with Google AI Studio and Jetpack Compose. Google Blogger and Gemini are trademarks of Google LLC.
