@@ -1,0 +1,93 @@
+name: Build & Release Blogger Post Automation AI Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Grant execute permission for gradlew (if present)
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          fi
+
+      - name: Build Android Debug APK
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --stacktrace --no-daemon
+          else
+            gradle assembleDebug --stacktrace --no-daemon
+          fi
+
+      - name: Rename APK for Distribution
+        run: |
+          mkdir -p build-artifacts
+          find app/build/outputs/apk/debug -name "*.apk" -exec cp {} build-artifacts/BloggerPostAutomationAI-debug.apk \; || \
+          find . -name "*debug*.apk" -exec cp {} build-artifacts/BloggerPostAutomationAI-debug.apk \;
+          ls -la build-artifacts/
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BloggerPostAutomationAI-apk
+          path: build-artifacts/BloggerPostAutomationAI-debug.apk
+          retention-days: 30
+
+      - name: Create GitHub Release & Publish APK
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build-artifacts/BloggerPostAutomationAI-debug.apk
+          name: Blogger Post Automation AI ${{ github.ref_name }}
+          body: |
+            ### 📱 Blogger Post Automation AI - Official Android Release (${{ github.ref_name }})
+
+            Direct installable APK build for Android 8.0+ devices.
+
+            #### 🚀 Highlights & Features:
+            - **Google Blogger API v3**: Multi-user Google account sign-in with granular Blogger permissions.
+            - **Site-to-Site Post Import**: Fetch, rewrite, and publish posts from any public or owned Blogger site.
+            - **Gemini AI Suite**:
+              - Multilingual SEO title & caption generator (English & বাংলা).
+              - Automated article rewrite, proofreading, and quality checks.
+              - 16:9 responsive video-style thumbnail composer (1200×675).
+            - **Privacy First**: Secure user token isolation and custom Gemini API key support.
+
+            #### 📥 Download:
+            Download **`BloggerPostAutomationAI-debug.apk`** below and tap to install on your Android device.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

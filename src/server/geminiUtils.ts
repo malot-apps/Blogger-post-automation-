@@ -1,26 +1,34 @@
 import { GoogleGenAI } from '@google/genai';
 
-let cachedGenAi: GoogleGenAI | null = null;
+const clientCache = new Map<string, GoogleGenAI>();
 
 /**
- * Returns a singleton instance of the Google GenAI client configured with server-side GEMINI_API_KEY.
+ * Returns an instance of the Google GenAI client configured with a custom user key
+ * or the server-side GEMINI_API_KEY environment variable.
  * Never exposes the API key to client browsers.
  */
-export function getGenAiClient(): GoogleGenAI {
-  if (cachedGenAi) return cachedGenAi;
-  const apiKey = process.env.GEMINI_API_KEY;
+export function getGenAiClient(customApiKey?: string): GoogleGenAI {
+  const apiKey = (customApiKey && customApiKey.trim().length > 0)
+    ? customApiKey.trim()
+    : process.env.GEMINI_API_KEY;
+
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not configured on the server. Please check your environment variables.');
+    throw new Error('Gemini API key is not configured. Please enter your Gemini API key in Settings or configure GEMINI_API_KEY on the server.');
   }
-  cachedGenAi = new GoogleGenAI({
+
+  const existing = clientCache.get(apiKey);
+  if (existing) return existing;
+
+  const client = new GoogleGenAI({
     apiKey,
     httpOptions: {
       headers: {
-        'User-Agent': 'aistudio-build',
+        'User-Agent': 'aistudio-blogger-automation',
       },
     },
   });
-  return cachedGenAi;
+  clientCache.set(apiKey, client);
+  return client;
 }
 
 /**

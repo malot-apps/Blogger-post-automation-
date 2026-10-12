@@ -1,39 +1,102 @@
-# Blogger Auto Publisher (Android)
+# Blogger Post Automation AI
 
-Mobile-first Android publishing application built with Kotlin and Jetpack Compose to format and publish image and caption articles directly to Google Blogger blogs with a single tap.
+[![Android Build & Release](https://github.com/malot-apps/Blogger-post-automation-/actions/workflows/android-build.yml/badge.svg)](https://github.com/malot-apps/Blogger-post-automation-/actions/workflows/android-build.yml)
+[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Web-blue.svg)](https://github.com/malot-apps/Blogger-post-automation-)
+[![Gemini AI](https://img.shields.io/badge/AI-Gemini%203.8%20Flash-orange.svg)](https://ai.google.dev/)
+[![Blogger API](https://img.shields.io/badge/Blogger%20API-v3-green.svg)](https://developers.google.com/blogger)
 
-## Features
+**Blogger Post Automation AI** is an enterprise-grade, mobile-first publishing platform and Android application built with Kotlin, Jetpack Compose, Next.js, and Google Gemini AI. It enables creators to format, enhance, proofread, and publish high-converting image, video-thumbnail, and caption articles directly to their Google Blogger blogs with a single tap.
 
-- **Google Blogger API v3 Integration**: Securely connect Google accounts and query user-owned Blogger blogs (`https://www.googleapis.com/auth/blogger`).
-- **Multi-User Isolation**: Isolated session handling, per-user blog selection, and post history.
-- **Smart Image Processing**:
-  - Automatic on-device photo optimization and downscaling for fast mobile loading.
-  - Video player 16:9 thumbnail composer (1200×675) with 4 distinct composition styles: Cinematic Focus, Dramatic Close-Up, Rule of Thirds, and Vivid Cover.
-- **AI Content Assistant (Gemini)**:
-  - Visual subject recognition and focal-point coordinates extraction.
-  - SEO title generation in English and Bengali (বাংলা).
-  - Title regeneration and fine-tuning.
-- **Master Blogger HTML Template Engine**:
-  - Dynamic variable substitution for `{{TITLE}}`, `{{IMAGE_URL}}`, `{{THUMBNAIL_URL}}`, `{{CAPTION}}`, and `{{PUBLISHED_DATE}}`.
-  - In-app HTML template editor with reset to default and variable tag insertion.
-- **Post Preview**:
-  - Real-time rendered WebView preview with Mobile/Desktop responsive toggles.
-  - Raw HTML preview with one-tap clipboard copy.
-- **Publishing & History Tracking**:
-  - 4-step animated publishing workflow.
-  - Success screen with live article URL, native Android Share (`Intent.ACTION_SEND`), and copy link.
-  - Firestore-synced published posts history.
+---
 
-## Architecture
+## 📥 Android APK Download & Installation
 
-- **Language**: Kotlin 2.0.21
-- **UI Toolkit**: Jetpack Compose with Material Design 3 (M3)
-- **Architecture Pattern**: MVVM (Model-View-ViewModel) + Repository Pattern
-- **Async & Reactive**: Kotlin Coroutines & StateFlow
-- **Networking**: OkHttp 4.12
-- **Image Loading**: Coil Compose 2.7
-- **Serialization**: kotlinx.serialization 1.7.3
+The application is built automatically on every release via **GitHub Actions**.
 
-## Building & Running
+- **Latest APK Release**: [Download BloggerPostAutomationAI-debug.apk](../../releases/latest)
+- **Minimum Requirements**: Android 8.0 (Oreo / API Level 26) or higher.
+- **Architecture**: ARM64 / ARMv7 / x86_64 compatible.
 
-Open the project in Android Studio (Ladybug or newer) and run the `app` module on an Android device or emulator running Android 8.0 (API 26) or higher.
+### How to Install on Android:
+1. Download `BloggerPostAutomationAI-debug.apk` directly on your Android phone or tablet.
+2. Tap the downloaded file in your Notification Center or Downloads folder.
+3. If prompted, toggle **"Allow from this source"** for your browser or file manager.
+4. Tap **Install** and launch **Blogger Post Automation AI**.
+
+---
+
+## 🚀 Key Features
+
+### 1. 🌐 Public Multi-User Google Authentication
+- **Universal Multi-User Sign-In**: Any user can securely sign in with their own Google account. No fixed accounts or developer email hardcoding.
+- **Isolated User Sessions**: Each account maintains its own OAuth session, Blogger blog list, selected default blog, and Firestore post history.
+- **Granular OAuth Permissions**: Requests only user identity and `https://www.googleapis.com/auth/blogger`. Tokens are never shared or logged.
+- **Instant Revocation**: Users can disconnect their session at any time or revoke permissions via [Google Security Settings](https://myaccount.google.com/permissions).
+
+### 2. 🤖 Gemini AI Content Suite
+- **Custom User API Key**: Users can provide their own Gemini API key in **Settings**, using their private quota and tier without exposing keys to other users.
+- **Multilingual Support (বাংলা & English)**: Native content generation, SEO headlines, and natural copy in both Bengali and English.
+- **Smart Image Analysis**: Visual scene understanding, focal-point coordinate detection ($x, y$ percentages), and automatic 16:9 thumbnail crop suggestions.
+- **Article Rewriter & Proofreader**: Rewrites rough drafts into polished, high-readability Blogger HTML articles with `<h2>`, `<h3>` headings, meta descriptions, and bullet points.
+- **SEO & Readability Auditor**: Instant scoring (0–100), word count, keyword density analysis, and actionable recommendations.
+- **Label & Hashtag Generator**: Automatically extracts high-traffic category labels formatted for Blogger and social media discovery.
+
+### 3. 🔄 Blogger Site-to-Site Post Import
+- **Instant Blog Discovery by URL**: Paste any public or owned Blogger URL (e.g., `https://myblog.blogspot.com` or custom domain).
+- **Dual API & Feed Pipeline**: Fetches posts via Google Blogger API v3 or the standard public Blogger Atom/JSON feed.
+- **Comprehensive Post Extraction**: Extracts post titles, complete HTML contents, author info, published dates, category labels, and all embedded images.
+- **AI Enhancement**: Preview any imported article and run one-tap AI enhancement to rewrite, reformat, and translate before publishing.
+- **One-Tap & Bulk Publishing**: Publish imported posts individually or in bulk directly to the user's chosen target Blogger blog.
+
+### 4. 🎨 Master HTML Template Engine & 16:9 Thumbnail Composer
+- **Dynamic Variable Substitution**: Supports `{{TITLE}}`, `{{IMAGE_URL}}`, `{{THUMBNAIL_URL}}`, `{{CAPTION}}`, and `{{PUBLISHED_DATE}}`.
+- **4 Thumbnail Composition Styles**:
+  1. *Cinematic Focus* (Centered zoom with video play overlay)
+  2. *Dramatic Close-Up* (Tight facial/object crop)
+  3. *Rule of Thirds* (Asymmetric editorial layout)
+  4. *Vivid Editorial* (High-saturation cover card)
+- **Responsive In-App Preview**: Toggle between Mobile (375px) and Desktop (100%) views before live publishing.
+
+---
+
+## 🏗️ Architecture & Technologies
+
+| Layer | Technologies |
+| :--- | :--- |
+| **Android Client** | Kotlin 2.0, Jetpack Compose (M3), MVVM, Coroutines, StateFlow, Coil, OkHttp |
+| **Web Client** | Next.js 15 (App Router), React 19, Tailwind CSS v4, Lucide Icons |
+| **AI Integration** | Google GenAI SDK (`@google/genai`), Models: `gemini-3.8-flash`, `gemini-3.1-flash-lite` |
+| **Cloud & Database** | Firebase Firestore (per-user security rules), Google Cloud Identity |
+| **CI/CD** | GitHub Actions (`.github/workflows/android-build.yml`), automated release asset tagging |
+
+---
+
+## 🔒 Security & Privacy Architecture
+
+1. **Zero-Trust Token Management**: Google OAuth access tokens are handled ephemerally. They are passed directly to Google's Blogger endpoints and are never written to unauthenticated databases.
+2. **Server-Side API Secret Protection**: Gemini API keys entered by users are transmitted only over encrypted HTTPS to server endpoints and never logged or exposed in public client bundles.
+3. **Firestore Multi-Tenant Security Rules**: Firestore security rules restrict reading and writing post history strictly to `request.auth.uid == userId`. No cross-tenant data leakage is possible.
+
+---
+
+## 🛠️ Local Development & Build
+
+### Running the Web Platform:
+```bash
+npm install
+npm run dev
+# Open http://localhost:3000
+```
+
+### Compiling the Android APK locally:
+```bash
+gradle assembleDebug
+# Generated APK will be in:
+# app/build/outputs/apk/debug/app-debug.apk
+```
+
+---
+
+## 📄 License & Attribution
+
+Developed with Google AI Studio and Jetpack Compose. All Blogger rights belong to Google LLC.

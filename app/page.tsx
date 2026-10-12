@@ -30,6 +30,8 @@ import { PublishProgressModal } from '@/components/PublishProgressModal';
 import { SuccessScreen, type PublishedPostData } from '@/components/SuccessScreen';
 import { SetupGuideModal } from '@/components/SetupGuideModal';
 import { PostHistoryModal } from '@/components/PostHistoryModal';
+import { ImportPostsModal } from '@/components/ImportPostsModal';
+import { AiToolsSuiteModal } from '@/components/AiToolsSuiteModal';
 import { AlertCircle, Shield, Lock, Eye, ExternalLink, HelpCircle } from 'lucide-react';
 
 const STORAGE_KEY_TEMPLATE = 'blogger_auto_publisher_template';
@@ -74,6 +76,8 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isAiSuiteOpen, setIsAiSuiteOpen] = useState(false);
 
   // Firestore post history state (strictly isolated per user)
   const [postHistory, setPostHistory] = useState<StoredPublishedPost[]>([]);
@@ -420,6 +424,8 @@ export default function Home() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenGuide={() => setIsGuideOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenImport={() => setIsImportOpen(true)}
+        onOpenAiTools={() => setIsAiSuiteOpen(true)}
         onLogout={handleLogout}
       />
 
@@ -653,6 +659,27 @@ export default function Home() {
           if (user) loadHistory(user.uid);
         }}
         blogName={selectedBlog?.name}
+      />
+
+      {/* Blogger Site-to-Site Post Import Modal */}
+      <ImportPostsModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        targetBlogId={selectedBlogId}
+        targetBlogName={selectedBlog?.name}
+        onPostPublished={() => {
+          if (user) loadHistory(user.uid);
+        }}
+      />
+
+      {/* Gemini AI Content Suite Modal */}
+      <AiToolsSuiteModal
+        isOpen={isAiSuiteOpen}
+        onClose={() => setIsAiSuiteOpen(false)}
+        initialTopic={caption || title}
+        onApplyTitle={setTitle}
+        onApplyCaption={setCaption}
+        onApplyLabels={setLabels}
       />
     </div>
   );

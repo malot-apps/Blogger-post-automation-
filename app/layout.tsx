@@ -2,17 +2,17 @@ import type {Metadata} from 'next';
 import './globals.css'; // Global styles
 
 export const metadata: Metadata = {
-  title: 'Blogger Auto Publisher',
-  description: 'Mobile-first Blogger publishing tool to create and post image and caption articles directly to your Blogger blogs with one tap.',
+  title: 'Blogger Post Automation AI',
+  description: 'Smart AI-powered Blogger publishing and automation tool to create, enhance with Gemini, and publish articles directly to Blogger blogs with one tap.',
   openGraph: {
-    title: 'Blogger Auto Publisher',
-    description: 'Mobile-first Blogger publishing tool to create and post image and caption articles directly to your Blogger blogs with one tap.',
+    title: 'Blogger Post Automation AI',
+    description: 'Smart AI-powered Blogger publishing and automation tool to create, enhance with Gemini, and publish articles directly to Blogger blogs with one tap.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Blogger Auto Publisher',
-    description: 'Mobile-first Blogger publishing tool to create and post image and caption articles directly to your Blogger blogs with one tap.',
+    title: 'Blogger Post Automation AI',
+    description: 'Smart AI-powered Blogger publishing and automation tool to create, enhance with Gemini, and publish articles directly to Blogger blogs with one tap.',
   },
 };
 

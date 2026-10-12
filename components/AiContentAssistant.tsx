@@ -102,9 +102,13 @@ export function AiContentAssistant({
         language === 'bn' ? 'ছবি ও বিষয়বস্তু বিশ্লেষণ করা হচ্ছে...' : 'Understanding image & subject...'
       );
 
+      const userKey = typeof window !== 'undefined' ? localStorage.getItem('blogger_user_gemini_api_key') : null;
       const res = await fetch('/api/ai/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(userKey ? { 'x-gemini-key': userKey } : {}),
+        },
         body: JSON.stringify({
           image: mainImageSrc,
           language,
@@ -135,7 +139,10 @@ export function AiContentAssistant({
       try {
         const thumbRes = await fetch('/api/ai/generate-thumbnail', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(userKey ? { 'x-gemini-key': userKey } : {}),
+          },
           body: JSON.stringify({
             image: mainImageSrc,
             subjectContext: `${analysis.mainSubject}. ${analysis.summary}`,
@@ -185,9 +192,13 @@ export function AiContentAssistant({
     setAnalysisError(null);
 
     try {
+      const userKey = typeof window !== 'undefined' ? localStorage.getItem('blogger_user_gemini_api_key') : null;
       const res = await fetch('/api/ai/regenerate-title', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(userKey ? { 'x-gemini-key': userKey } : {}),
+        },
         body: JSON.stringify({
           image: mainImageSrc,
           language,

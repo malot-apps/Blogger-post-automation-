@@ -107,12 +107,12 @@ fun HeaderSection(
                 }
                 Column {
                     Text(
-                        text = "Blogger Auto Publisher",
+                        text = "Blogger Post Automation AI",
                         style = MaterialTheme.typography.titleMedium,
                         color = Slate900
                     )
                     Text(
-                        text = "Fast 1-Tap Mobile Publishing",
+                        text = "Smart AI-Powered Blogger Publishing",
                         style = MaterialTheme.typography.labelSmall,
                         color = Slate500
                     )

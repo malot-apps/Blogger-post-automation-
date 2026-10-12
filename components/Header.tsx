@@ -11,6 +11,7 @@ import {
   Sparkles,
   CheckCircle2,
   Clock,
+  DownloadCloud,
 } from 'lucide-react';
 import type { BloggerBlog } from '@/src/server/bloggerService';
 
@@ -24,6 +25,8 @@ interface HeaderProps {
   onOpenSettings: () => void;
   onOpenGuide: () => void;
   onOpenHistory?: () => void;
+  onOpenImport?: () => void;
+  onOpenAiTools?: () => void;
   onLogout: () => void;
 }
 
@@ -37,47 +40,76 @@ export function Header({
   onOpenSettings,
   onOpenGuide,
   onOpenHistory,
+  onOpenImport,
+  onOpenAiTools,
   onLogout,
 }: HeaderProps) {
-  const currentBlog = blogs.find((b) => b.id === selectedBlogId);
-
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
       <div className="max-w-xl mx-auto px-4 py-3">
         {/* Top Row: Brand & Tools */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-linear-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-sm shadow-orange-500/20 font-bold text-lg">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-sm shadow-orange-500/20 font-bold text-lg">
               <span>B</span>
             </div>
             <div>
               <h1 className="text-base font-bold text-slate-900 leading-tight flex items-center gap-1.5">
-                Blogger Auto Publisher
+                Blogger Post Automation AI
               </h1>
-              <p className="text-xs text-slate-500">Fast 1-Tap Mobile Publishing</p>
+              <p className="text-xs text-slate-500">Smart AI-Powered Blogger Publishing</p>
             </div>
           </div>
 
           <div className="flex items-center space-x-1">
+            {/* Import Blogger Posts Button */}
+            {user && onOpenImport && (
+              <button
+                type="button"
+                onClick={onOpenImport}
+                className="p-2 text-slate-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                title="Import Blogger Posts (Site-to-Site)"
+                aria-label="Import Posts"
+              >
+                <DownloadCloud className="w-4.5 h-4.5 text-orange-600" />
+              </button>
+            )}
+
+            {/* AI Assistant Button */}
+            {user && onOpenAiTools && (
+              <button
+                type="button"
+                onClick={onOpenAiTools}
+                className="p-2 text-slate-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                title="Gemini AI Content Suite"
+                aria-label="AI Tools"
+              >
+                <Sparkles className="w-4.5 h-4.5 text-amber-500" />
+              </button>
+            )}
+
             {user && onOpenHistory && (
               <button
+                type="button"
                 onClick={onOpenHistory}
                 className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
                 title="Published Post History (Firestore)"
                 aria-label="Post History"
               >
-                <Clock className="w-4.5 h-4.5 text-orange-600" />
+                <Clock className="w-4.5 h-4.5" />
               </button>
             )}
             <button
+              type="button"
               onClick={onOpenSettings}
               className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Post Template Settings"
-              aria-label="Template Settings"
+              title="Settings (Templates & Gemini Key)"
+              aria-label="Settings"
             >
               <Sliders className="w-4.5 h-4.5" />
             </button>
             <button
+              type="button"
               onClick={onOpenGuide}
               className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
               title="Setup & Troubleshooting Guide"
@@ -87,6 +119,7 @@ export function Header({
             </button>
             {user && (
               <button
+                type="button"
                 onClick={onLogout}
                 className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                 title="Sign out"
@@ -103,7 +136,7 @@ export function Header({
           <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center space-x-2 min-w-0">
               {user.photoURL ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={user.photoURL}
                   alt={user.displayName || 'User'}
@@ -142,6 +175,7 @@ export function Header({
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={onRefreshBlogs}
                   disabled={isLoadingBlogs}
                   className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
@@ -156,6 +190,7 @@ export function Header({
               <div className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-200 flex items-center justify-between w-full">
                 <span>No blogs detected on this account.</span>
                 <button
+                  type="button"
                   onClick={onRefreshBlogs}
                   className="underline font-semibold ml-2 hover:text-amber-900"
                 >

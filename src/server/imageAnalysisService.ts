@@ -39,11 +39,13 @@ export interface ImageUrlAnalysisResult {
 export async function analyzeImageUrlWithGemini({
   imageUrl,
   language = 'bn',
+  customApiKey,
 }: {
   imageUrl: string;
   language?: string;
+  customApiKey?: string;
 }): Promise<ImageUrlAnalysisResult> {
-  const ai = getGenAiClient();
+  const ai = getGenAiClient(customApiKey);
   const { data: base64Data, mimeType } = await resolveImageToInlineData(imageUrl);
 
   const isBengali = language === 'bn' || language.toLowerCase().includes('bengali') || language.includes('বাংলা');

@@ -4,12 +4,15 @@ import { regenerateSeoTitle } from '@/src/server/geminiService';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { image, mimeType = 'image/jpeg', language = 'bn', previousTitles = [], contextSummary = '' } = body;
+    const { image, mimeType = 'image/jpeg', language = 'bn', previousTitles = [], contextSummary = '', customApiKey: bodyApiKey } = body;
 
-    if (!process.env.GEMINI_API_KEY) {
+    const headerKey = req.headers.get('x-gemini-key');
+    const customApiKey = (bodyApiKey || headerKey || '').trim() || undefined;
+
+    if (!customApiKey && !process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'GEMINI_API_KEY is not configured on the server.' },
-        { status: 500 }
+        { error: 'Gemini API key is not configured. Please enter your Gemini API key in Settings or configure GEMINI_API_KEY on the server.' },
+        { status: 400 }
       );
     }
 

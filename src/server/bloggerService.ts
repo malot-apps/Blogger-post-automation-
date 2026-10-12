@@ -213,3 +213,233 @@ export async function createAndPublishBloggerPost(
   const data = (await response.json()) as BloggerPostResponse;
   return data;
 }
+
+export interface ImportedPostItem {
+  id: string;
+  blogId?: string;
+  title: string;
+  content: string;
+  summary: string;
+  url: string;
+  published: string;
+  updated?: string;
+  labels: string[];
+  images: string[];
+  thumbnailUrl?: string;
+  authorName?: string;
+}
+
+export interface ImportSourceBlogResult {
+  blog: {
+    id?: string;
+    name: string;
+    url: string;
+    description?: string;
+    totalPosts?: number;
+  };
+  posts: ImportedPostItem[];
+  nextPageToken?: string;
+}
+
+export function extractImagesFromHtml(html: string): string[] {
+  const images: string[] = [];
+  const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+  let match: RegExpExecArray | null;
+  while ((match = imgRegex.exec(html)) !== null) {
+    if (match[1] && !images.includes(match[1])) {
+      images.push(match[1]);
+    }
+  }
+  return images;
+}
+
+function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Imports posts from a source Blogger site URL using Blogger API v3 (if authenticated/available)
+ * or via the public Blogger Atom/JSON feed.
+ */
+export async function importBloggerPostsFromSource({
+  sourceUrl,
+  accessToken,
+  maxResults = 25,
+  pageToken,
+}: {
+  sourceUrl: string;
+  accessToken?: string;
+  maxResults?: number;
+  pageToken?: string;
+}): Promise<ImportSourceBlogResult> {
+  let normalizedUrl = sourceUrl.trim();
+  if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+    normalizedUrl = `https://${normalizedUrl}`;
+  }
+
+  // Remove trailing slashes
+  normalizedUrl = normalizedUrl.replace(/\/+$/, '');
+
+  // Attempt 1: Blogger API v3 by URL (if access token provided)
+  if (accessToken) {
+    try {
+      const byUrlEndpoint = `https://www.googleapis.com/blogger/v3/blogs/byurl?url=${encodeURIComponent(normalizedUrl)}`;
+      const blogRes = await fetch(byUrlEndpoint, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+        },
+      });
+
+      if (blogRes.ok) {
+        const blogData = await blogRes.json();
+        const blogId = blogData.id;
+
+        let postsUrl = `https://www.googleapis.com/blogger/v3/blogs/${blogId}/posts?maxResults=${Math.min(maxResults, 50)}`;
+        if (pageToken) {
+          postsUrl += `&pageToken=${encodeURIComponent(pageToken)}`;
+        }
+
+        const postsRes = await fetch(postsUrl, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/json',
+          },
+        });
+
+        if (postsRes.ok) {
+          const postsData = await postsRes.json();
+          const rawItems = (postsData.items || []) as Array<{
+            id: string;
+            title: string;
+            content?: string;
+            url: string;
+            published: string;
+            updated?: string;
+            labels?: string[];
+            author?: { displayName?: string };
+          }>;
+
+          const posts: ImportedPostItem[] = rawItems.map((item) => {
+            const content = item.content || '';
+            const images = extractImagesFromHtml(content);
+            const plainText = stripHtmlTags(content);
+            return {
+              id: item.id,
+              blogId,
+              title: item.title || 'Untitled Post',
+              content,
+              summary: plainText.slice(0, 240),
+              url: item.url,
+              published: item.published,
+              updated: item.updated,
+              labels: item.labels || [],
+              images,
+              thumbnailUrl: images[0] || undefined,
+              authorName: item.author?.displayName,
+            };
+          });
+
+          return {
+            blog: {
+              id: blogData.id,
+              name: blogData.name || 'Imported Blog',
+              url: blogData.url || normalizedUrl,
+              description: blogData.description,
+              totalPosts: blogData.posts?.totalItems,
+            },
+            posts,
+            nextPageToken: postsData.nextPageToken,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('API v3 byurl attempt had error, falling back to public feed:', err);
+    }
+  }
+
+  // Attempt 2: Public Blogger JSON Feed (works for any public Blogger site without extra credentials)
+  try {
+    const feedUrl = `${normalizedUrl}/feeds/posts/default?alt=json&max-results=${Math.min(maxResults, 50)}`;
+    const feedRes = await fetch(feedUrl, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'Blogger-Post-Automation-AI/1.0',
+      },
+    });
+
+    if (!feedRes.ok) {
+      throw new Error(`Could not access source blog feed (${feedRes.status}). Verify the URL is a valid Blogger blog.`);
+    }
+
+    const feedData = await feedRes.json();
+    const feed = feedData.feed || {};
+    const blogTitle = feed.title?.$t || 'Blogger Blog';
+    const totalPostsStr = feed.openSearch$totalResults?.$t;
+    const totalPosts = totalPostsStr ? parseInt(totalPostsStr, 10) : undefined;
+
+    interface FeedCategory {
+      term?: string;
+    }
+    interface FeedLink {
+      rel?: string;
+      href?: string;
+    }
+    interface FeedEntry {
+      id?: { $t?: string };
+      title?: { $t?: string };
+      content?: { $t?: string };
+      summary?: { $t?: string };
+      published?: { $t?: string };
+      updated?: { $t?: string };
+      category?: FeedCategory[];
+      link?: FeedLink[];
+      media$thumbnail?: { url?: string };
+      author?: Array<{ name?: { $t?: string } }>;
+    }
+
+    const entries = (feed.entry || []) as FeedEntry[];
+    const posts: ImportedPostItem[] = entries.map((entry, index) => {
+      const rawHtml = entry.content?.$t || entry.summary?.$t || '';
+      const images = extractImagesFromHtml(rawHtml);
+      if (entry.media$thumbnail?.url && !images.includes(entry.media$thumbnail.url)) {
+        // Upgrade low-res thumbnail s72-c to full size
+        const higherRes = entry.media$thumbnail.url.replace(/\/s72-c\//, '/s1600/');
+        images.unshift(higherRes);
+      }
+
+      const altLink = entry.link?.find((l) => l.rel === 'alternate')?.href || normalizedUrl;
+      const labels = (entry.category || []).map((c) => c.term || '').filter(Boolean);
+      const summaryText = stripHtmlTags(rawHtml).slice(0, 240);
+
+      const entryId = entry.id?.$t?.split('.post-')[1] || entry.id?.$t || `post_${index}_${Date.now()}`;
+
+      return {
+        id: entryId,
+        title: entry.title?.$t || 'Untitled Post',
+        content: rawHtml,
+        summary: summaryText,
+        url: altLink,
+        published: entry.published?.$t || new Date().toISOString(),
+        updated: entry.updated?.$t,
+        labels,
+        images,
+        thumbnailUrl: images[0] || entry.media$thumbnail?.url,
+        authorName: entry.author?.[0]?.name?.$t,
+      };
+    });
+
+    return {
+      blog: {
+        name: blogTitle,
+        url: normalizedUrl,
+        totalPosts,
+      },
+      posts,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed to import posts from source blog';
+    throw new Error(`Import error: ${msg}. Please ensure the blog URL is accessible and active.`);
+  }
+}
+
