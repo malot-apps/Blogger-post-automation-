@@ -37,7 +37,7 @@ import com.aistudio.bloggerautopublisher.ui.components.PublishProgressDialog
 import com.aistudio.bloggerautopublisher.ui.components.SetupGuideDialog
 import com.aistudio.bloggerautopublisher.ui.components.SuccessScreenView
 import com.aistudio.bloggerautopublisher.ui.components.TemplateSettingsDialog
-import com.aistudio.bloggerautopublisher.ui.theme.Slate50
+import com.aistudio.bloggerautopublisher.ui.theme.*
 import com.aistudio.bloggerautopublisher.util.ImageOptimizer
 
 @Composable
@@ -97,7 +97,9 @@ fun BloggerApp(viewModel: BloggerViewModel) {
                 ) {
                     if (uiState.currentUser == null) {
                         AuthCardView(
-                            onSignIn = { viewModel.signIn() }
+                            isAuthenticating = uiState.isAuthenticating,
+                            authError = uiState.authError,
+                            onConnectWithToken = { viewModel.authenticateWithToken(it) }
                         )
                     } else if (uiState.publishedPost != null) {
                         SuccessScreenView(

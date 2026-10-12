@@ -2,7 +2,6 @@ package com.aistudio.bloggerautopublisher.repository
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.aistudio.bloggerautopublisher.model.BloggerBlog
 import com.aistudio.bloggerautopublisher.model.PublishedPost
 import com.aistudio.bloggerautopublisher.model.UserProfile
 import com.aistudio.bloggerautopublisher.template.BloggerTemplateEngine
@@ -11,7 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.util.UUID
 
 class BloggerRepository(context: Context) {
 
@@ -20,6 +18,9 @@ class BloggerRepository(context: Context) {
 
     private val _currentUser = MutableStateFlow<UserProfile?>(loadSavedUser())
     val currentUser: StateFlow<UserProfile?> = _currentUser.asStateFlow()
+
+    private val _accessToken = MutableStateFlow<String?>(prefs.getString("oauth_access_token", null))
+    val accessToken: StateFlow<String?> = _accessToken.asStateFlow()
 
     private val _selectedBlogId = MutableStateFlow(prefs.getString("selected_blog_id", "").orEmpty())
     val selectedBlogId: StateFlow<String> = _selectedBlogId.asStateFlow()
@@ -54,27 +55,31 @@ class BloggerRepository(context: Context) {
         }
     }
 
-    fun saveGeminiApiKey(key: String) {
-        val trimmed = key.trim()
-        prefs.edit().putString("gemini_api_key", trimmed).apply()
-        _geminiApiKey.value = trimmed
-    }
-
-    fun signInDemoUser() {
-        val user = UserProfile(
-            userId = "user_" + UUID.randomUUID().toString().take(8),
-            email = "creator@example.com",
-            displayName = "Blogger Creator",
-            photoUrl = null,
-            defaultBlogId = "blog_daily_stories_101"
-        )
-        prefs.edit().putString("user_profile", json.encodeToString(user)).apply()
+    fun setSession(token: String, user: UserProfile) {
+        val cleanToken = token.trim()
+        prefs.edit()
+            .putString("oauth_access_token", cleanToken)
+            .putString("user_profile", json.encodeToString(user))
+            .apply()
+        _accessToken.value = cleanToken
         _currentUser.value = user
     }
 
     fun signOut() {
-        prefs.edit().remove("user_profile").apply()
+        prefs.edit()
+            .remove("oauth_access_token")
+            .remove("user_profile")
+            .remove("selected_blog_id")
+            .apply()
+        _accessToken.value = null
         _currentUser.value = null
+        _selectedBlogId.value = ""
+    }
+
+    fun saveGeminiApiKey(key: String) {
+        val trimmed = key.trim()
+        prefs.edit().putString("gemini_api_key", trimmed).apply()
+        _geminiApiKey.value = trimmed
     }
 
     fun selectBlog(blogId: String) {

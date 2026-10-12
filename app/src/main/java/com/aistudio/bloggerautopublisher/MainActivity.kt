@@ -29,11 +29,37 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleIntent(intent)
         enableEdgeToEdge()
         setContent {
             BloggerAutoPublisherTheme {
                 BloggerApp(viewModel = viewModel)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: android.content.Intent?) {
+        val uri = intent?.data ?: return
+        val fragment = uri.fragment
+        val query = uri.query
+        val token = when {
+            fragment != null && fragment.contains("access_token=") -> {
+                fragment.split("&")
+                    .find { it.startsWith("access_token=") }
+                    ?.substringAfter("access_token=")
+            }
+            query != null && query.contains("access_token=") -> {
+                uri.getQueryParameter("access_token")
+            }
+            else -> null
+        }
+        if (!token.isNullOrBlank()) {
+            viewModel.authenticateWithToken(token)
         }
     }
 }

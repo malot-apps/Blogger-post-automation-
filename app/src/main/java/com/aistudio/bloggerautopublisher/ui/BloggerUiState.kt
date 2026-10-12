@@ -11,6 +11,8 @@ import com.aistudio.bloggerautopublisher.util.ProcessedImage
 data class BloggerUiState(
     // Auth & Blogs
     val currentUser: UserProfile? = null,
+    val isAuthenticating: Boolean = false,
+    val authError: String? = null,
     val blogs: List<BloggerBlog> = emptyList(),
     val selectedBlogId: String = "",
     val isLoadingBlogs: Boolean = false,

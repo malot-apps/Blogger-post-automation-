@@ -59,12 +59,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.aistudio.bloggerautopublisher.template.BloggerTemplateEngine
-import com.aistudio.bloggerautopublisher.ui.theme.OrangePrimary
-import com.aistudio.bloggerautopublisher.ui.theme.Slate200
-import com.aistudio.bloggerautopublisher.ui.theme.Slate400
-import com.aistudio.bloggerautopublisher.ui.theme.Slate500
-import com.aistudio.bloggerautopublisher.ui.theme.Slate700
-import com.aistudio.bloggerautopublisher.ui.theme.Slate900
+import com.aistudio.bloggerautopublisher.ui.theme.*
 
 @Composable
 fun TemplateSettingsDialog(
@@ -191,7 +186,7 @@ fun TemplateSettingsDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                listOf("{{IMAGE_URL}}", "{{THUMBNAIL_URL}}", "{{CAPTION}}", "{{TITLE}}").forEach { tag ->
+                                for (tag in listOf("{{IMAGE_URL}}", "{{THUMBNAIL_URL}}", "{{CAPTION}}", "{{TITLE}}")) {
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))

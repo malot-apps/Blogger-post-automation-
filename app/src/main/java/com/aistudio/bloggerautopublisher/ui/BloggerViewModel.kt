@@ -57,32 +57,67 @@ class BloggerViewModel(
             }
         }
 
-        // Auto sign-in demo session on launch so the user can immediately test all features
-        if (repository.currentUser.value == null) {
-            repository.signInDemoUser()
+        // Load blogs if user is already signed in with a saved token
+        if (repository.currentUser.value != null && !repository.accessToken.value.isNullOrBlank()) {
+            loadBlogs()
         }
     }
 
-    fun signIn() {
-        repository.signInDemoUser()
+    fun authenticateWithToken(token: String) {
+        val cleanToken = token.trim()
+        if (cleanToken.isBlank()) {
+            _uiState.update { it.copy(authError = "Please enter or paste a valid Google OAuth token.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAuthenticating = true, authError = null) }
+            try {
+                val profile = BloggerApiService.fetchUserProfile(cleanToken)
+                repository.setSession(cleanToken, profile)
+                _uiState.update {
+                    it.copy(
+                        currentUser = profile,
+                        isAuthenticating = false,
+                        authError = null
+                    )
+                }
+                loadBlogs()
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isAuthenticating = false,
+                        authError = e.message ?: "Authentication failed. Please verify your Google OAuth token."
+                    )
+                }
+            }
+        }
     }
 
     fun signOut() {
         repository.signOut()
         _uiState.update {
             it.copy(
+                currentUser = null,
                 blogs = emptyList(),
                 selectedBlogId = "",
-                publishedPost = null
+                publishedPost = null,
+                authError = null
             )
         }
     }
 
     fun loadBlogs() {
+        val token = repository.accessToken.value
+        if (token.isNullOrBlank()) {
+            _uiState.update { it.copy(blogs = emptyList(), selectedBlogId = "") }
+            return
+        }
+
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingBlogs = true, blogsError = null) }
             try {
-                val blogs = BloggerApiService.fetchUserBlogs("demo_token")
+                val blogs = BloggerApiService.fetchUserBlogs(token)
                 val preferredBlogId = if (_uiState.value.selectedBlogId.isNotEmpty() && blogs.any { it.id == _uiState.value.selectedBlogId }) {
                     _uiState.value.selectedBlogId
                 } else {
@@ -100,7 +135,7 @@ class BloggerViewModel(
                 _uiState.update {
                     it.copy(
                         isLoadingBlogs = false,
-                        blogsError = e.message ?: "Failed to load blogs"
+                        blogsError = e.message ?: "Failed to load blogs from Blogger"
                     )
                 }
             }
@@ -408,11 +443,19 @@ class BloggerViewModel(
             delay(600)
             _uiState.update { it.copy(publishStep = 4) }
 
-            // Step 4: Finalizing live post
+            // Step 4: Finalizing live post via real Blogger API v3
             try {
+                val token = repository.accessToken.value
+                if (token.isNullOrBlank()) {
+                    throw Exception("Google OAuth access token is required. Please sign in with Google.")
+                }
+                if (state.selectedBlogId.isBlank()) {
+                    throw Exception("Please select a Blogger destination blog first.")
+                }
+
                 val published = BloggerApiService.publishPost(
-                    accessToken = "demo_token",
-                    blogId = state.selectedBlogId.ifEmpty { "blog_daily_stories_101" },
+                    accessToken = token,
+                    blogId = state.selectedBlogId,
                     title = effectiveTitle,
                     content = postHtml,
                     labels = labelsList,

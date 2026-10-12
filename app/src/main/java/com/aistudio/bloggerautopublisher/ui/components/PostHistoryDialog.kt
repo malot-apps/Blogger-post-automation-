@@ -47,12 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.aistudio.bloggerautopublisher.model.PublishedPost
-import com.aistudio.bloggerautopublisher.ui.theme.OrangePrimary
-import com.aistudio.bloggerautopublisher.ui.theme.Slate200
-import com.aistudio.bloggerautopublisher.ui.theme.Slate400
-import com.aistudio.bloggerautopublisher.ui.theme.Slate500
-import com.aistudio.bloggerautopublisher.ui.theme.Slate700
-import com.aistudio.bloggerautopublisher.ui.theme.Slate900
+import com.aistudio.bloggerautopublisher.ui.theme.*
 
 @Composable
 fun PostHistoryDialog(

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -48,14 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.aistudio.bloggerautopublisher.model.PublishedPost
-import com.aistudio.bloggerautopublisher.ui.theme.Emerald50
-import com.aistudio.bloggerautopublisher.ui.theme.Emerald600
-import com.aistudio.bloggerautopublisher.ui.theme.OrangePrimary
-import com.aistudio.bloggerautopublisher.ui.theme.Slate200
-import com.aistudio.bloggerautopublisher.ui.theme.Slate400
-import com.aistudio.bloggerautopublisher.ui.theme.Slate500
-import com.aistudio.bloggerautopublisher.ui.theme.Slate700
-import com.aistudio.bloggerautopublisher.ui.theme.Slate900
+import com.aistudio.bloggerautopublisher.ui.theme.*
 
 @Composable
 fun SuccessScreenView(
@@ -174,15 +168,18 @@ fun SuccessScreenView(
 
             if (!post.labels.isNullOrBlank()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    post.labels.split(",").forEach { label ->
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(Color.White)
-                                .border(1.dp, Slate200, RoundedCornerShape(50))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text(label.trim(), fontSize = 10.sp, color = Slate700)
+                    for (label in post.labels.split(",")) {
+                        val trimmed = label.trim()
+                        if (trimmed.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color.White)
+                                    .border(1.dp, Slate200, RoundedCornerShape(50))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(trimmed, fontSize = 10.sp, color = Slate700)
+                            }
                         }
                     }
                 }

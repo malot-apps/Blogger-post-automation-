@@ -44,14 +44,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aistudio.bloggerautopublisher.ui.theme.OrangePrimary
-import com.aistudio.bloggerautopublisher.ui.theme.OrangeSecondary
-import com.aistudio.bloggerautopublisher.ui.theme.Slate200
-import com.aistudio.bloggerautopublisher.ui.theme.Slate300
-import com.aistudio.bloggerautopublisher.ui.theme.Slate400
-import com.aistudio.bloggerautopublisher.ui.theme.Slate500
-import com.aistudio.bloggerautopublisher.ui.theme.Slate700
-import com.aistudio.bloggerautopublisher.ui.theme.Slate900
+import com.aistudio.bloggerautopublisher.ui.theme.*
 
 val POPULAR_LABEL_SUGGESTIONS = listOf(
     "News", "Viral", "Entertainment", "Photos", "Updates", "Lifestyle", "Tech", "Stories"
@@ -245,7 +238,7 @@ fun PostFormSection(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text("Quick add:", fontSize = 11.sp, color = Slate400, modifier = Modifier.align(Alignment.CenterVertically))
-                            POPULAR_LABEL_SUGGESTIONS.take(4).forEach { tag ->
+                            for (tag in POPULAR_LABEL_SUGGESTIONS.take(4)) {
                                 Box(
                                     modifier = Modifier
                                         .clip(CircleShape)

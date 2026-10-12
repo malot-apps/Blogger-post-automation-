@@ -31,13 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.aistudio.bloggerautopublisher.ui.theme.Emerald600
-import com.aistudio.bloggerautopublisher.ui.theme.OrangePrimary
-import com.aistudio.bloggerautopublisher.ui.theme.Slate200
-import com.aistudio.bloggerautopublisher.ui.theme.Slate400
-import com.aistudio.bloggerautopublisher.ui.theme.Slate500
-import com.aistudio.bloggerautopublisher.ui.theme.Slate700
-import com.aistudio.bloggerautopublisher.ui.theme.Slate900
+import com.aistudio.bloggerautopublisher.ui.theme.*
 
 data class StepItem(val id: Int, val title: String, val desc: String)
 
@@ -111,7 +105,7 @@ fun PublishProgressDialog(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    STEPS.forEach { step ->
+                    for (step in STEPS) {
                         val isDone = currentStep > step.id
                         val isCurrent = currentStep == step.id
 

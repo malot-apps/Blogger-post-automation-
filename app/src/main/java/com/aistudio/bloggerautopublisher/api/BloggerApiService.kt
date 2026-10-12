@@ -2,6 +2,7 @@ package com.aistudio.bloggerautopublisher.api
 
 import com.aistudio.bloggerautopublisher.model.BloggerBlog
 import com.aistudio.bloggerautopublisher.model.PublishedPost
+import com.aistudio.bloggerautopublisher.model.UserProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -28,29 +29,41 @@ object BloggerApiService {
 
     private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
-    suspend fun fetchUserBlogs(accessToken: String?): List<BloggerBlog> = withContext(Dispatchers.IO) {
-        if (accessToken.isNullOrBlank() || accessToken.startsWith("demo_")) {
-            // Return demo blogs for seamless out-of-the-box exploration
-            return@withContext listOf(
-                BloggerBlog(
-                    id = "blog_daily_stories_101",
-                    name = "Daily Visual Stories",
-                    url = "https://dailyvisualstories.blogspot.com",
-                    totalPosts = 142
-                ),
-                BloggerBlog(
-                    id = "blog_photo_journal_202",
-                    name = "Creative Photo Journal",
-                    url = "https://creativephotojournal.blogspot.com",
-                    totalPosts = 89
-                ),
-                BloggerBlog(
-                    id = "blog_news_updates_303",
-                    name = "News & Trends Weekly",
-                    url = "https://newstrendsweekly.blogspot.com",
-                    totalPosts = 315
+    suspend fun fetchUserProfile(accessToken: String): UserProfile = withContext(Dispatchers.IO) {
+        if (accessToken.isBlank()) {
+            throw BloggerApiException("Google OAuth token is required.", 401)
+        }
+
+        val request = Request.Builder()
+            .url("https://www.googleapis.com/oauth2/v3/userinfo")
+            .header("Authorization", "Bearer $accessToken")
+            .header("Accept", "application/json")
+            .get()
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw parseGoogleApiError(response.code, body, "Failed to authenticate Google user")
+                }
+
+                val json = JSONObject(body)
+                UserProfile(
+                    userId = json.optString("sub", UUID.randomUUID().toString()),
+                    email = json.optString("email", ""),
+                    displayName = json.optString("name", "Blogger Creator"),
+                    photoUrl = json.optString("picture").ifBlank { null }
                 )
-            )
+            }
+        } catch (e: IOException) {
+            throw BloggerApiException("Network connection error: ${e.message}")
+        }
+    }
+
+    suspend fun fetchUserBlogs(accessToken: String?): List<BloggerBlog> = withContext(Dispatchers.IO) {
+        if (accessToken.isNullOrBlank()) {
+            throw BloggerApiException("Google OAuth token is missing. Please sign in with Google to view your Blogger blogs.", 401)
         }
 
         val request = Request.Builder()
@@ -103,24 +116,12 @@ object BloggerApiService {
         thumbnailUrl: String? = null,
         caption: String? = null
     ): PublishedPost = withContext(Dispatchers.IO) {
-        if (accessToken.isNullOrBlank() || accessToken.startsWith("demo_")) {
-            // Simulated live publish in demo mode
-            val postId = UUID.randomUUID().toString().take(12)
-            val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-            val blogSlug = blogId.replace("blog_", "").replace("_", "-")
-            val liveUrl = "https://$blogSlug.blogspot.com/${SimpleDateFormat("yyyy/MM", Locale.US).format(Date())}/post-$postId.html"
+        if (accessToken.isNullOrBlank()) {
+            throw BloggerApiException("Google OAuth token is missing. Please sign in with Google to publish.", 401)
+        }
 
-            return@withContext PublishedPost(
-                id = postId,
-                blogId = blogId,
-                title = title,
-                caption = caption,
-                url = liveUrl,
-                thumbnailUrl = thumbnailUrl,
-                imageUrl = imageUrl,
-                labels = if (labels.isNotEmpty()) labels.joinToString(", ") else null,
-                publishedAt = now
-            )
+        if (blogId.isBlank()) {
+            throw BloggerApiException("No Blogger destination blog selected.", 400)
         }
 
         val url = "https://www.googleapis.com/blogger/v3/blogs/$blogId/posts?isDraft=$isDraft"
@@ -196,19 +197,19 @@ object BloggerApiService {
                 BloggerApiException("Blogger API disabled: Enable Blogger API v3 in Google Cloud Console.", status)
             }
             status == 401 || reason == "authError" || reason == "invalid_grant" -> {
-                BloggerApiException("Token expired: Your Google session has expired. Please sign in again.", status)
+                BloggerApiException("Session expired: Please connect your Google account again.", status)
             }
             reason == "insufficientPermissions" || (status == 403 && message.contains("insufficient", ignoreCase = true)) -> {
-                BloggerApiException("Insufficient Blogger permission: Grant Blogger management permission to your account.", status)
+                BloggerApiException("Insufficient permissions: Grant Blogger management permission to your account.", status)
             }
             reason == "rateLimitExceeded" || reason == "dailyLimitExceeded" -> {
-                BloggerApiException("Blogger API quota limit exceeded: Please wait a moment and try again.", status)
+                BloggerApiException("Blogger API quota exceeded: Please try again shortly.", status)
             }
             status == 404 || reason == "notFound" -> {
                 BloggerApiException("Blog not found: The selected Blogger blog was not found or deleted.", status)
             }
             status == 403 -> {
-                BloggerApiException("Blogger API permission denied: Access denied (${if (message.isNotBlank()) message else "403 Forbidden"}).", status)
+                BloggerApiException("Access denied (${if (message.isNotBlank()) message else "403 Forbidden"}).", status)
             }
             message.isNotBlank() -> BloggerApiException(message, status)
             else -> BloggerApiException("$defaultAction ($status)", status)

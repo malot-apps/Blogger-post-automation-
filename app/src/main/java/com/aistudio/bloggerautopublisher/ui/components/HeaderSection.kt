@@ -44,15 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aistudio.bloggerautopublisher.model.BloggerBlog
 import com.aistudio.bloggerautopublisher.model.UserProfile
-import com.aistudio.bloggerautopublisher.ui.theme.Emerald50
-import com.aistudio.bloggerautopublisher.ui.theme.Emerald600
-import com.aistudio.bloggerautopublisher.ui.theme.OrangePrimary
-import com.aistudio.bloggerautopublisher.ui.theme.OrangeSecondary
-import com.aistudio.bloggerautopublisher.ui.theme.Slate200
-import com.aistudio.bloggerautopublisher.ui.theme.Slate400
-import com.aistudio.bloggerautopublisher.ui.theme.Slate500
-import com.aistudio.bloggerautopublisher.ui.theme.Slate700
-import com.aistudio.bloggerautopublisher.ui.theme.Slate900
+import com.aistudio.bloggerautopublisher.ui.theme.*
 
 @Composable
 fun HeaderSection(
@@ -269,7 +261,7 @@ fun HeaderSection(
                         expanded = isBlogDropdownExpanded,
                         onDismissRequest = { isBlogDropdownExpanded = false }
                     ) {
-                        blogs.forEach { blog ->
+                        for (blog in blogs) {
                             DropdownMenuItem(
                                 text = {
                                     Column {
