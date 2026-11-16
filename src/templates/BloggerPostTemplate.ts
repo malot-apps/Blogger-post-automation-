@@ -282,11 +282,174 @@ export function renderBloggerPostTemplate(
   });
 
   return safeTemplate
-    .replace(/\{\{TITLE\}\}/g, escapedTitle)
-    .replace(/\{\{IMAGE_URL\}\}/g, safeImageUrl)
-    .replace(/\{\{THUMBNAIL_URL\}\}/g, safeThumbnailUrl)
-    .replace(/\{\{CAPTION\}\}/g, formattedCaption)
-    .replace(/\{\{PUBLISHED_DATE\}\}/g, formattedDate);
+    .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
+    .replace(/\{\{IMAGE_URL\}\}/g, () => safeImageUrl)
+    .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeThumbnailUrl)
+    .replace(/\{\{CAPTION\}\}/g, () => formattedCaption)
+    .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
+}
+
+export interface ImportedTemplateVariables {
+  title: string;
+  articleHtml: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  firstImageAlt?: string;
+  firstImageSrcset?: string;
+  publishedDate?: string;
+}
+
+const IMPORTED_ARTICLE_SCOPED_CSS = `
+    .imported-article-content {
+      display: block;
+      padding: 1em 0px;
+      text-align: left;
+      line-height: 1.75;
+      max-width: 100%;
+      overflow-wrap: break-word;
+      color: inherit;
+    }
+    .imported-article-content h1,
+    .imported-article-content h2,
+    .imported-article-content h3,
+    .imported-article-content h4 {
+      margin: 1.1em 0 0.5em;
+      line-height: 1.35;
+    }
+    .imported-article-content p {
+      margin: 0.75em 0;
+    }
+    .imported-article-content ul,
+    .imported-article-content ol {
+      margin: 0.75em 0;
+      padding-left: 1.5em;
+    }
+    .imported-article-content blockquote {
+      margin: 1em 0;
+      padding: 0.5em 1em;
+      border-left: 4px solid #6e8efb;
+      background: rgba(0, 0, 0, 0.03);
+    }
+    .imported-article-content figure {
+      margin: 1em 0;
+      text-align: center;
+    }
+    .imported-article-content figcaption {
+      font-size: 0.875em;
+      color: #555;
+      margin-top: 6px;
+    }
+    .imported-article-content img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 12px auto;
+      border-radius: 6px;
+    }
+    .imported-article-content table {
+      max-width: 100%;
+      overflow-x: auto;
+      border-collapse: collapse;
+    }
+`;
+
+function sanitizeTemplateUrlValue(url?: string): string {
+  if (!url) return '';
+  return url.trim().replace(/["'<>]/g, '');
+}
+
+/**
+ * Converts a sanitized imported article (title, cleaned HTML body, original images)
+ * into the existing Master HTML Template without bypassing its design, CSS, scripts,
+ * or interactive player/control sections.
+ */
+export function renderImportedPostTemplate(
+  templateString?: string | null,
+  data?: ImportedTemplateVariables
+): string {
+  const safeTemplate = templateString && templateString.trim().length > 0
+    ? templateString
+    : DEFAULT_MASTER_TEMPLATE;
+
+  if (!data) return safeTemplate;
+
+  const escapedTitle = escapeHtml(data.title || '');
+  const safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl);
+  const safeThumbnailUrl = sanitizeTemplateUrlValue(data.thumbnailUrl) || safeImageUrl;
+  const formattedDate = data.publishedDate || new Date().toLocaleString('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  const articleContainer = `<div class="imported-article-content">${data.articleHtml || ''}</div>`;
+
+  let output = safeTemplate;
+
+  // 1. Add scoped responsive rules for imported article elements without altering existing template CSS
+  if (/<\/style>/i.test(output)) {
+    output = output.replace(/<\/style>/i, () => `${IMPORTED_ARTICLE_SCOPED_CSS}  </style>`);
+  }
+
+  // 2. Replace {{CAPTION}} inside the Master Template without trapping rich HTML/images/links inside an <a> wrapper
+  const captionAnchorRegex = /<a\b[^>]*>\s*\{\{CAPTION\}\}\s*<\/a>/gi;
+  if (captionAnchorRegex.test(output)) {
+    output = output.replace(captionAnchorRegex, () => articleContainer);
+  }
+  if (output.includes('{{CAPTION}}')) {
+    output = output.replace(/\{\{CAPTION\}\}/g, () => articleContainer);
+  } else if (!output.includes('class="imported-article-content"')) {
+    // Fallback for custom templates omitting {{CAPTION}}: place article content before video-container or after <body>
+    if (/<div\b[^>]*class=["'][^"']*video-container[^"']*["'][^>]*>/i.test(output)) {
+      output = output.replace(
+        /<div\b[^>]*class=["'][^"']*video-container[^"']*["'][^>]*>/i,
+        (match) => `${articleContainer}\n${match}`
+      );
+    } else if (/<body\b[^>]*>/i.test(output)) {
+      output = output.replace(/<body\b[^>]*>/i, (match) => `${match}\n${articleContainer}`);
+    } else {
+      output = `${articleContainer}\n${output}`;
+    }
+  }
+
+  // 3. Handle hero {{IMAGE_URL}} image cleanly
+  if (!safeImageUrl) {
+    // Text-only imported post: remove empty hero image link to prevent broken <img src="">
+    output = output.replace(
+      /<a\b[^>]*href=["']\{\{IMAGE_URL\}\}["'][^>]*>\s*<img\b[^>]*src=["']\{\{IMAGE_URL\}\}["'][^>]*>\s*<\/a>/gi,
+      ''
+    );
+    output = output.replace(/<img\b[^>]*src=["']\{\{IMAGE_URL\}\}["'][^>]*>/gi, '');
+  } else {
+    // Preserve first image alt and responsive srcset on the Master Template hero <img> when available
+    output = output.replace(/<img\b([^>]*src=["']\{\{IMAGE_URL\}\}["'][^>]*)>/gi, (_m, attrs: string) => {
+      let updatedAttrs = attrs;
+      if (data.firstImageAlt && /\balt=["']\s*["']/i.test(updatedAttrs)) {
+        updatedAttrs = updatedAttrs.replace(/\balt=["']\s*["']/i, () => `alt="${escapeHtml(data.firstImageAlt!)}"`);
+      }
+      if (data.firstImageSrcset && !/\bsrcset=/i.test(updatedAttrs)) {
+        updatedAttrs = `${updatedAttrs} srcset="${escapeHtml(data.firstImageSrcset)}"`;
+      }
+      return `<img${updatedAttrs}>`;
+    });
+  }
+
+  // 4. Guard #videoThumbnail when imported post has zero images
+  if (!safeThumbnailUrl) {
+    output = output.replace(
+      /<img\b([^>]*src=["']\{\{THUMBNAIL_URL\}\}["'][^>]*)>/gi,
+      (_m, attrs: string) => {
+        const withoutSrc = attrs.replace(/\s*src=["']\{\{THUMBNAIL_URL\}\}["']/i, '');
+        return `<img${withoutSrc} style="display: none;">`;
+      }
+    );
+  }
+
+  // 5. Substitute all remaining Master Template placeholders safely via function replacers
+  return output
+    .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
+    .replace(/\{\{IMAGE_URL\}\}/g, () => safeImageUrl)
+    .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeThumbnailUrl)
+    .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
 }
 
 export const renderTemplate = renderBloggerPostTemplate;

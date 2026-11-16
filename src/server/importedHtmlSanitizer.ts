@@ -119,7 +119,7 @@ const HTTPS_UPGRADE_CDN_HOSTS = [
 ];
 
 const AD_CONTAINER_TOKEN_REGEX =
-  /(^|[-_\s])(ad|ads|advert|advertisement|ad-slot|ad-box|ad-unit|ad-banner|ad-container|ad-wrapper|adsense|adsbygoogle|adsterra|mgid|taboola|outbrain|propeller|popads|monetag|sponsored-box|sponsor-banner|promo-banner|promotional-banner|affiliate-box|affiliate-banner|related-posts|share-buttons|social-share|newsletter-box|subscribe-box|cookie-banner|popup-overlay|blogger-post-footer)([-_\s]|$)/i;
+  /(^|[-_\s])(ad|ads|advert|advertisement|ad-slot|ad-box|ad-unit|ad-banner|ad-container|ad-wrapper|adsense|adsbygoogle|adsterra|mgid|taboola|outbrain|propeller|popads|monetag|sponsored-box|sponsor-banner|promo-banner|promotional-banner|affiliate-box|affiliate-banner|related-posts|share-buttons|social-share|newsletter-box|subscribe-box|cookie-banner|popup-overlay|blogger-post-footer|play-icon|loading-screen)([-_\s]|$)/i;
 
 const PROMO_CTA_TEXT_REGEX =
   /^(buy now|shop now|check price|get deal|claim offer|download now|play now|watch now|watch full video|subscribe now|join telegram|follow us|advertisement|sponsored)$/i;
@@ -644,13 +644,16 @@ export function sanitizeImportedHtml(
   // 2. Remove dangerous / executable / embed elements completely
   $root.find(REMOVE_COMPLETELY_SELECTOR).remove();
 
-  // 3. Remove explicit ad / promo / social-share / related-posts widget containers
+  // 3. Remove explicit ad / promo / social-share / related-posts / hidden widget containers
   // Guarded so containers holding genuine article content or Blogger images are never dropped.
-  $root.find('[class], [id], [aria-label], [data-ad-client], [data-ad-slot]').each((_, el) => {
+  $root.find('[class], [id], [aria-label], [data-ad-client], [data-ad-slot], [style], [hidden]').each((_, el) => {
     const $el = $(el);
     if ($el.closest('#__import_root__').length === 0) return;
     const tag = el.tagName?.toLowerCase();
     if (tag === 'img' || tag === 'body' || tag === 'html') return;
+
+    const styleInfo = parseStyleDimensions($el.attr('style'));
+    const isHiddenContainer = styleInfo.hidden || $el.attr('hidden') !== undefined;
 
     const hasAdAttr =
       $el.attr('data-ad-client') !== undefined || $el.attr('data-ad-slot') !== undefined;
@@ -660,7 +663,7 @@ export function sanitizeImportedHtml(
       $el.attr('aria-label') || '',
     ].join(' ');
 
-    if (hasAdAttr || AD_CONTAINER_TOKEN_REGEX.test(marker)) {
+    if (hasAdAttr || isHiddenContainer || AD_CONTAINER_TOKEN_REGEX.test(marker)) {
       if (!containsGenuineArticleContent($, el)) {
         $el.remove();
       }

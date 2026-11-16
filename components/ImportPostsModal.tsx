@@ -15,15 +15,19 @@ import {
   Tag,
   Loader2,
   Search,
+  Code,
+  FileText,
 } from 'lucide-react';
 import type { ImportedPostItem } from '@/src/server/bloggerService';
 import { getAccessToken } from '@/src/lib/firebase';
+import { renderImportedPostTemplate } from '@/src/templates/BloggerPostTemplate';
 
 interface ImportPostsModalProps {
   isOpen: boolean;
   onClose: () => void;
   targetBlogId: string;
   targetBlogName?: string;
+  templateString?: string;
   onPostPublished?: () => void;
 }
 
@@ -32,6 +36,7 @@ export function ImportPostsModal({
   onClose,
   targetBlogId,
   targetBlogName,
+  templateString,
   onPostPublished,
 }: ImportPostsModalProps) {
   const [sourceUrl, setSourceUrl] = useState('');
@@ -47,6 +52,7 @@ export function ImportPostsModal({
 
   // Post detail preview / AI rewrite modal state
   const [previewingPost, setPreviewingPost] = useState<ImportedPostItem | null>(null);
+  const [previewTab, setPreviewTab] = useState<'template' | 'article' | 'code'>('template');
   const [isEnhancingAi, setIsEnhancingAi] = useState(false);
   const [aiEnhancedContent, setAiEnhancedContent] = useState<string | null>(null);
   const [aiEnhancedTitle, setAiEnhancedTitle] = useState<string | null>(null);
@@ -134,6 +140,9 @@ export function ImportPostsModal({
 
       const postTitle = customTitle || post.title;
       const postHtml = customContent || post.content;
+      const formattedPublishedDate = post.published
+        ? new Date(post.published).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+        : undefined;
 
       const res = await fetch('/api/blogger/publish', {
         method: 'POST',
@@ -145,8 +154,11 @@ export function ImportPostsModal({
           blogId: targetBlogId,
           title: postTitle,
           contentHtml: postHtml,
+          thumbnailUrl: post.thumbnailUrl,
           sourceUrl: post.url || blogMeta?.url,
           labels: post.labels.join(', '),
+          customTemplate: templateString,
+          publishedDate: formattedPublishedDate,
           isImported: true,
         }),
       });
@@ -195,6 +207,10 @@ export function ImportPostsModal({
         setBulkProgress({ current: i + 1, total: toPublish.length });
 
         try {
+          const formattedPublishedDate = post.published
+            ? new Date(post.published).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+            : undefined;
+
           const res = await fetch('/api/blogger/publish', {
             method: 'POST',
             headers: {
@@ -205,8 +221,11 @@ export function ImportPostsModal({
               blogId: targetBlogId,
               title: post.title,
               contentHtml: post.content,
+              thumbnailUrl: post.thumbnailUrl,
               sourceUrl: post.url || blogMeta?.url,
               labels: post.labels.join(', '),
+              customTemplate: templateString,
+              publishedDate: formattedPublishedDate,
               isImported: true,
             }),
           });
@@ -635,15 +654,104 @@ export function ImportPostsModal({
                 </button>
               </div>
 
-              {/* Rendered HTML content */}
-              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 max-h-96 overflow-y-auto text-sm text-slate-800 leading-relaxed">
-                <div
-                  className="space-y-3 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:text-slate-900 [&_h2]:text-base [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:pt-1 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:text-slate-900 [&_p]:leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1 [&_blockquote]:border-l-4 [&_blockquote]:border-orange-300 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-slate-600 [&_a]:text-orange-600 [&_a]:underline [&_figure]:my-3 [&_figcaption]:text-xs [&_figcaption]:text-slate-500 [&_figcaption]:mt-1 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-2 [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:text-xs"
-                  dangerouslySetInnerHTML={{
-                    __html: aiEnhancedContent || previewingPost.content,
-                  }}
-                />
+              {/* Preview Mode Tabs */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="inline-flex bg-slate-100 p-0.5 rounded-lg text-[11px] font-semibold border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab('template')}
+                    className={`px-2.5 py-1 rounded-md flex items-center gap-1 transition-colors ${
+                      previewTab === 'template'
+                        ? 'bg-white text-orange-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Eye className="w-3 h-3" />
+                    <span>Master Template</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab('article')}
+                    className={`px-2.5 py-1 rounded-md flex items-center gap-1 transition-colors ${
+                      previewTab === 'article'
+                        ? 'bg-white text-orange-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText className="w-3 h-3" />
+                    <span>Clean Article</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab('code')}
+                    className={`px-2.5 py-1 rounded-md flex items-center gap-1 transition-colors ${
+                      previewTab === 'code'
+                        ? 'bg-white text-orange-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Code className="w-3 h-3" />
+                    <span>HTML Output</span>
+                  </button>
+                </div>
+                <span className="text-[10px] text-slate-500">
+                  {previewingPost.images.length} genuine image(s) preserved
+                </span>
               </div>
+
+              {/* Rendered Preview Area */}
+              {(() => {
+                const activeTitle = aiEnhancedTitle || previewingPost.title;
+                const activeArticleHtml = aiEnhancedContent || previewingPost.content;
+                const firstDetail = previewingPost.imageDetails?.[0];
+                const primaryImage = firstDetail?.src || previewingPost.images[0] || previewingPost.thumbnailUrl || '';
+                const templatedPreviewHtml = renderImportedPostTemplate(templateString, {
+                  title: activeTitle,
+                  articleHtml: activeArticleHtml,
+                  imageUrl: primaryImage,
+                  thumbnailUrl: previewingPost.thumbnailUrl || primaryImage,
+                  firstImageAlt: firstDetail?.alt,
+                  firstImageSrcset: firstDetail?.srcset,
+                  publishedDate: previewingPost.published
+                    ? new Date(previewingPost.published).toLocaleString('en-US', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })
+                    : undefined,
+                });
+
+                if (previewTab === 'template') {
+                  return (
+                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                      <iframe
+                        title="Master Template Post Preview"
+                        srcDoc={templatedPreviewHtml}
+                        className="w-full min-h-[400px] border-0"
+                        sandbox="allow-same-origin"
+                      />
+                    </div>
+                  );
+                }
+
+                if (previewTab === 'code') {
+                  return (
+                    <pre className="bg-slate-900 text-slate-100 p-3.5 rounded-xl text-[11px] font-mono overflow-x-auto whitespace-pre-wrap max-h-96 leading-relaxed border border-slate-800">
+                      {templatedPreviewHtml}
+                    </pre>
+                  );
+                }
+
+                return (
+                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 max-h-96 overflow-y-auto text-sm text-slate-800 leading-relaxed">
+                    <div
+                      className="space-y-3 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:text-slate-900 [&_h2]:text-base [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:pt-1 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:text-slate-900 [&_p]:leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1 [&_blockquote]:border-l-4 [&_blockquote]:border-orange-300 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-slate-600 [&_a]:text-orange-600 [&_a]:underline [&_figure]:my-3 [&_figcaption]:text-xs [&_figcaption]:text-slate-500 [&_figcaption]:mt-1 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-2 [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:text-xs"
+                      dangerouslySetInnerHTML={{
+                        __html: activeArticleHtml,
+                      }}
+                    />
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Sub-Modal Footer */}

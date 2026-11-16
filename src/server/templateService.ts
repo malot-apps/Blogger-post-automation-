@@ -1,7 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { escapeHtml } from '../lib/sanitizer';
-import { DEFAULT_MASTER_TEMPLATE } from '../templates/BloggerPostTemplate';
+import {
+  DEFAULT_MASTER_TEMPLATE,
+  renderImportedPostTemplate,
+  type ImportedTemplateVariables,
+} from '../templates/BloggerPostTemplate';
 
 export interface TemplateVariables {
   title: string;
@@ -57,9 +61,27 @@ export function renderTemplate(
   });
 
   return rawTemplate
-    .replace(/\{\{TITLE\}\}/g, escapedTitle)
-    .replace(/\{\{IMAGE_URL\}\}/g, safeImageUrl)
-    .replace(/\{\{THUMBNAIL_URL\}\}/g, safeThumbnailUrl)
-    .replace(/\{\{CAPTION\}\}/g, escapedCaption)
-    .replace(/\{\{PUBLISHED_DATE\}\}/g, formattedDate);
+    .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
+    .replace(/\{\{IMAGE_URL\}\}/g, () => safeImageUrl)
+    .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeThumbnailUrl)
+    .replace(/\{\{CAPTION\}\}/g, () => escapedCaption)
+    .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
+}
+
+/**
+ * Renders a sanitized imported article into the existing Master HTML Template
+ * (/templates/blogger-post-template.html or the user's saved custom template).
+ */
+export function renderImportedTemplate(
+  templateString: string | undefined | null,
+  variables: ImportedTemplateVariables
+): string {
+  const trimmedCustom = templateString?.trim();
+  // Prefer /templates/blogger-post-template.html when no custom override was edited
+  const effectiveTemplate =
+    trimmedCustom && trimmedCustom.length > 0 && trimmedCustom !== DEFAULT_MASTER_TEMPLATE.trim()
+      ? templateString!
+      : loadMasterTemplate();
+
+  return renderImportedPostTemplate(effectiveTemplate, variables);
 }

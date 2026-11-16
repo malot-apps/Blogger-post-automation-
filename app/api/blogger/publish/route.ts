@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchUserBlogs, createAndPublishBloggerPost } from '@/src/server/bloggerService';
-import { renderTemplate } from '@/src/server/templateService';
+import { renderTemplate, renderImportedTemplate } from '@/src/server/templateService';
 import { generateTitleFromCaption } from '@/src/lib/titleGenerator';
 import { verifyImage } from '@/src/server/imageVerificationService';
 import { uploadAndVerifyImageOnBloggerHost } from '@/src/server/bloggerImageHostService';
@@ -153,15 +153,42 @@ export async function POST(req: NextRequest) {
           : '';
       const finalImportedTitle = rawTitle || generateTitleFromCaption(sanitized.plainText || 'Imported Post');
 
+      let primaryImg = resolved.verifiedUrls[0] || '';
+      let verifiedThumbUrl = primaryImg;
+
+      if (!primaryImg && typeof thumbnailUrl === 'string' && thumbnailUrl.trim().length > 0) {
+        const cleanThumbCandidate = thumbnailUrl.trim();
+        const httpsCandidate = cleanThumbCandidate.startsWith('http://')
+          ? `https://${cleanThumbCandidate.slice(7)}`
+          : cleanThumbCandidate;
+        const thumbCheck = await verifyImage(httpsCandidate);
+        if (thumbCheck.isValid && thumbCheck.verifiedUrl) {
+          verifiedThumbUrl = thumbCheck.verifiedUrl;
+          primaryImg = thumbCheck.verifiedUrl;
+        }
+      }
+
+      const firstImgMeta = sanitized.images[0];
+      const templatedPostHtml = renderImportedTemplate(customTemplate, {
+        title: finalImportedTitle,
+        articleHtml: resolved.html,
+        imageUrl: primaryImg,
+        thumbnailUrl: verifiedThumbUrl || primaryImg,
+        firstImageAlt: firstImgMeta?.alt,
+        firstImageSrcset: firstImgMeta?.srcset,
+        publishedDate:
+          typeof body.publishedDate === 'string' && body.publishedDate.trim().length > 0
+            ? body.publishedDate.trim()
+            : undefined,
+      });
+
       const publishedPost = await createAndPublishBloggerPost(token, {
         blogId,
         title: finalImportedTitle,
-        content: resolved.html,
+        content: templatedPostHtml,
         labels: parsedLabels.length > 0 ? parsedLabels : undefined,
         isDraft: Boolean(isDraft),
       });
-
-      const primaryImg = resolved.verifiedUrls[0] || '';
 
       return NextResponse.json({
         success: true,
@@ -172,10 +199,10 @@ export async function POST(req: NextRequest) {
           title: publishedPost.title,
           url: publishedPost.url,
           imageUrl: primaryImg,
-          thumbnailUrl: primaryImg,
+          thumbnailUrl: verifiedThumbUrl || primaryImg,
           published: publishedPost.published,
           labels: publishedPost.labels || parsedLabels,
-          content: resolved.html,
+          content: templatedPostHtml,
         },
       });
     }

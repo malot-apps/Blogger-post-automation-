@@ -667,6 +667,7 @@ export default function Home() {
         onClose={() => setIsImportOpen(false)}
         targetBlogId={selectedBlogId}
         targetBlogName={selectedBlog?.name}
+        templateString={customTemplate}
         onPostPublished={() => {
           if (user) loadHistory(user.uid);
         }}
