@@ -214,6 +214,13 @@ export async function createAndPublishBloggerPost(
   return data;
 }
 
+import {
+  decodeHtmlEntities,
+  normalizeImageUrl,
+  sanitizeImportedHtml,
+  type SanitizedArticleImage,
+} from './importedHtmlSanitizer';
+
 export interface ImportedPostItem {
   id: string;
   blogId?: string;
@@ -225,6 +232,7 @@ export interface ImportedPostItem {
   updated?: string;
   labels: string[];
   images: string[];
+  imageDetails?: SanitizedArticleImage[];
   thumbnailUrl?: string;
   authorName?: string;
 }
@@ -241,20 +249,34 @@ export interface ImportSourceBlogResult {
   nextPageToken?: string;
 }
 
-export function extractImagesFromHtml(html: string): string[] {
-  const images: string[] = [];
-  const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
-  let match: RegExpExecArray | null;
-  while ((match = imgRegex.exec(html)) !== null) {
-    if (match[1] && !images.includes(match[1])) {
-      images.push(match[1]);
-    }
-  }
-  return images;
+export function extractImagesFromHtml(html: string, baseUrl?: string): string[] {
+  return sanitizeImportedHtml(html, { baseUrl }).images.map((img) => img.src);
 }
 
 function stripHtmlTags(html: string): string {
   return html.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function cleanArticleTitle(rawTitle?: string): string {
+  if (!rawTitle) return 'Untitled Post';
+  const cleaned = decodeHtmlEntities(stripHtmlTags(rawTitle));
+  return cleaned || 'Untitled Post';
+}
+
+function normalizeBloggerSourceUrl(sourceUrl: string): { normalizedUrl: string; blogRootUrl: string } {
+  let candidate = sourceUrl.trim();
+  if (!/^https?:\/\//i.test(candidate)) {
+    candidate = `https://${candidate}`;
+  }
+  const parsed = new URL(candidate);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Only HTTP/HTTPS Blogger URLs are supported.');
+  }
+  parsed.searchParams.delete('m');
+  parsed.hash = '';
+  const blogRootUrl = parsed.origin;
+  const normalizedUrl = parsed.toString().replace(/\/+$/, '');
+  return { normalizedUrl, blogRootUrl };
 }
 
 /**
@@ -272,18 +294,13 @@ export async function importBloggerPostsFromSource({
   maxResults?: number;
   pageToken?: string;
 }): Promise<ImportSourceBlogResult> {
-  let normalizedUrl = sourceUrl.trim();
-  if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
-    normalizedUrl = `https://${normalizedUrl}`;
-  }
-
-  // Remove trailing slashes
-  normalizedUrl = normalizedUrl.replace(/\/+$/, '');
+  const { blogRootUrl } = normalizeBloggerSourceUrl(sourceUrl);
+  const clampedMax = Math.max(1, Math.min(Number(maxResults) || 25, 50));
 
   // Attempt 1: Blogger API v3 by URL (if access token provided)
   if (accessToken) {
     try {
-      const byUrlEndpoint = `https://www.googleapis.com/blogger/v3/blogs/byurl?url=${encodeURIComponent(normalizedUrl)}`;
+      const byUrlEndpoint = `https://www.googleapis.com/blogger/v3/blogs/byurl?url=${encodeURIComponent(blogRootUrl)}`;
       const blogRes = await fetch(byUrlEndpoint, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -294,9 +311,10 @@ export async function importBloggerPostsFromSource({
       if (blogRes.ok) {
         const blogData = await blogRes.json();
         const blogId = blogData.id;
+        const resolvedBlogUrl = blogData.url || blogRootUrl;
 
-        let postsUrl = `https://www.googleapis.com/blogger/v3/blogs/${blogId}/posts?maxResults=${Math.min(maxResults, 50)}`;
-        if (pageToken) {
+        let postsUrl = `https://www.googleapis.com/blogger/v3/blogs/${encodeURIComponent(blogId)}/posts?maxResults=${clampedMax}`;
+        if (pageToken && !/^\d+$/.test(pageToken)) {
           postsUrl += `&pageToken=${encodeURIComponent(pageToken)}`;
         }
 
@@ -321,20 +339,24 @@ export async function importBloggerPostsFromSource({
           }>;
 
           const posts: ImportedPostItem[] = rawItems.map((item) => {
-            const content = item.content || '';
-            const images = extractImagesFromHtml(content);
-            const plainText = stripHtmlTags(content);
+            const rawHtml = item.content || '';
+            const sanitized = sanitizeImportedHtml(rawHtml, {
+              baseUrl: item.url || resolvedBlogUrl,
+            });
+            const images = sanitized.images.map((img) => img.src);
+
             return {
               id: item.id,
               blogId,
-              title: item.title || 'Untitled Post',
-              content,
-              summary: plainText.slice(0, 240),
+              title: cleanArticleTitle(item.title),
+              content: sanitized.html,
+              summary: sanitized.plainText.slice(0, 240),
               url: item.url,
               published: item.published,
               updated: item.updated,
               labels: item.labels || [],
               images,
+              imageDetails: sanitized.images,
               thumbnailUrl: images[0] || undefined,
               authorName: item.author?.displayName,
             };
@@ -343,9 +365,9 @@ export async function importBloggerPostsFromSource({
           return {
             blog: {
               id: blogData.id,
-              name: blogData.name || 'Imported Blog',
-              url: blogData.url || normalizedUrl,
-              description: blogData.description,
+              name: decodeHtmlEntities(blogData.name || 'Imported Blog'),
+              url: resolvedBlogUrl,
+              description: blogData.description ? decodeHtmlEntities(blogData.description) : undefined,
               totalPosts: blogData.posts?.totalItems,
             },
             posts,
@@ -360,7 +382,12 @@ export async function importBloggerPostsFromSource({
 
   // Attempt 2: Public Blogger JSON Feed (works for any public Blogger site without extra credentials)
   try {
-    const feedUrl = `${normalizedUrl}/feeds/posts/default?alt=json&max-results=${Math.min(maxResults, 50)}`;
+    const startIndex = pageToken && /^\d+$/.test(pageToken) ? parseInt(pageToken, 10) : 1;
+    let feedUrl = `${blogRootUrl}/feeds/posts/default?alt=json&max-results=${clampedMax}`;
+    if (startIndex > 1) {
+      feedUrl += `&start-index=${startIndex}`;
+    }
+
     const feedRes = await fetch(feedUrl, {
       headers: {
         Accept: 'application/json',
@@ -374,7 +401,7 @@ export async function importBloggerPostsFromSource({
 
     const feedData = await feedRes.json();
     const feed = feedData.feed || {};
-    const blogTitle = feed.title?.$t || 'Blogger Blog';
+    const blogTitle = decodeHtmlEntities(feed.title?.$t || 'Blogger Blog') || 'Blogger Blog';
     const totalPostsStr = feed.openSearch$totalResults?.$t;
     const totalPosts = totalPostsStr ? parseInt(totalPostsStr, 10) : undefined;
 
@@ -398,33 +425,52 @@ export async function importBloggerPostsFromSource({
       author?: Array<{ name?: { $t?: string } }>;
     }
 
+    const feedLinks = (feed.link || []) as FeedLink[];
+    const nextFeedHref = feedLinks.find((l) => l.rel === 'next')?.href;
+    let nextPageToken: string | undefined;
+    if (nextFeedHref) {
+      try {
+        const nextUrl = new URL(nextFeedHref);
+        const nextStart = nextUrl.searchParams.get('start-index');
+        if (nextStart && /^\d+$/.test(nextStart)) {
+          nextPageToken = nextStart;
+        }
+      } catch {
+        // ignore malformed next link
+      }
+    }
+
     const entries = (feed.entry || []) as FeedEntry[];
     const posts: ImportedPostItem[] = entries.map((entry, index) => {
       const rawHtml = entry.content?.$t || entry.summary?.$t || '';
-      const images = extractImagesFromHtml(rawHtml);
-      if (entry.media$thumbnail?.url && !images.includes(entry.media$thumbnail.url)) {
-        // Upgrade low-res thumbnail s72-c to full size
-        const higherRes = entry.media$thumbnail.url.replace(/\/s72-c\//, '/s1600/');
-        images.unshift(higherRes);
+      const altLink = entry.link?.find((l) => l.rel === 'alternate')?.href || blogRootUrl;
+
+      const sanitized = sanitizeImportedHtml(rawHtml, { baseUrl: altLink });
+      const images = sanitized.images.map((img) => img.src);
+
+      let fallbackThumb: string | undefined;
+      if (!images[0] && entry.media$thumbnail?.url) {
+        const normalizedThumb = normalizeImageUrl(entry.media$thumbnail.url, altLink);
+        if (normalizedThumb) {
+          fallbackThumb = normalizedThumb.replace(/\/s72(-c)?(-k-no)?\//i, '/s1600/');
+        }
       }
 
-      const altLink = entry.link?.find((l) => l.rel === 'alternate')?.href || normalizedUrl;
       const labels = (entry.category || []).map((c) => c.term || '').filter(Boolean);
-      const summaryText = stripHtmlTags(rawHtml).slice(0, 240);
-
       const entryId = entry.id?.$t?.split('.post-')[1] || entry.id?.$t || `post_${index}_${Date.now()}`;
 
       return {
         id: entryId,
-        title: entry.title?.$t || 'Untitled Post',
-        content: rawHtml,
-        summary: summaryText,
+        title: cleanArticleTitle(entry.title?.$t),
+        content: sanitized.html,
+        summary: sanitized.plainText.slice(0, 240),
         url: altLink,
         published: entry.published?.$t || new Date().toISOString(),
         updated: entry.updated?.$t,
         labels,
         images,
-        thumbnailUrl: images[0] || entry.media$thumbnail?.url,
+        imageDetails: sanitized.images,
+        thumbnailUrl: images[0] || fallbackThumb,
         authorName: entry.author?.[0]?.name?.$t,
       };
     });
@@ -432,10 +478,11 @@ export async function importBloggerPostsFromSource({
     return {
       blog: {
         name: blogTitle,
-        url: normalizedUrl,
+        url: blogRootUrl,
         totalPosts,
       },
       posts,
+      nextPageToken,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to import posts from source blog';

@@ -132,7 +132,6 @@ export function ImportPostsModal({
       const token = await getAccessToken();
       if (!token) throw new Error('Signed-in session required. Please sign in again.');
 
-      const imageUrl = post.images[0] || post.thumbnailUrl || 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=1200';
       const postTitle = customTitle || post.title;
       const postHtml = customContent || post.content;
 
@@ -145,10 +144,10 @@ export function ImportPostsModal({
         body: JSON.stringify({
           blogId: targetBlogId,
           title: postTitle,
-          imageUrl,
-          thumbnailUrl: post.thumbnailUrl || imageUrl,
-          caption: postHtml,
+          contentHtml: postHtml,
+          sourceUrl: post.url || blogMeta?.url,
           labels: post.labels.join(', '),
+          isImported: true,
         }),
       });
 
@@ -185,6 +184,8 @@ export function ImportPostsModal({
     setBulkProgress({ current: 0, total: toPublish.length });
     setError(null);
 
+    const failedTitles: string[] = [];
+
     try {
       const token = await getAccessToken();
       if (!token) throw new Error('Signed-in session required.');
@@ -192,8 +193,6 @@ export function ImportPostsModal({
       for (let i = 0; i < toPublish.length; i++) {
         const post = toPublish[i];
         setBulkProgress({ current: i + 1, total: toPublish.length });
-
-        const imageUrl = post.images[0] || post.thumbnailUrl || 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=1200';
 
         try {
           const res = await fetch('/api/blogger/publish', {
@@ -205,24 +204,33 @@ export function ImportPostsModal({
             body: JSON.stringify({
               blogId: targetBlogId,
               title: post.title,
-              imageUrl,
-              thumbnailUrl: post.thumbnailUrl || imageUrl,
-              caption: post.content,
+              contentHtml: post.content,
+              sourceUrl: post.url || blogMeta?.url,
               labels: post.labels.join(', '),
+              isImported: true,
             }),
           });
           const data = await res.json();
-          if (data.success && data.post?.url) {
+          if (res.ok && data.success && data.post?.url) {
             setPublishedSuccessMap((prev) => ({
               ...prev,
               [post.id]: data.post.url,
             }));
+          } else {
+            failedTitles.push(post.title);
           }
         } catch (e) {
           console.warn(`Could not bulk publish post ${post.id}:`, e);
+          failedTitles.push(post.title);
         }
         // Small rate limit delay between posts
         await new Promise((r) => setTimeout(r, 600));
+      }
+
+      if (failedTitles.length > 0) {
+        setError(
+          `Published with ${failedTitles.length} failure(s): ${failedTitles.slice(0, 3).join(', ')}${failedTitles.length > 3 ? '...' : ''}`
+        );
       }
 
       if (onPostPublished) onPostPublished();
@@ -239,6 +247,7 @@ export function ImportPostsModal({
   const handleEnhanceWithAi = async () => {
     if (!previewingPost) return;
     setIsEnhancingAi(true);
+    setError(null);
     try {
       const savedKey = typeof window !== 'undefined' ? localStorage.getItem('blogger_user_gemini_api_key') : null;
       const savedLang = typeof window !== 'undefined' ? localStorage.getItem('blogger_user_ai_language') || 'bn' : 'bn';
@@ -253,6 +262,7 @@ export function ImportPostsModal({
           action: 'rewrite',
           originalTitle: previewingPost.title,
           originalContent: previewingPost.content,
+          sourceUrl: previewingPost.url || blogMeta?.url,
           language: savedLang,
         }),
       });
@@ -439,6 +449,7 @@ export function ImportPostsModal({
                         <img
                           src={post.thumbnailUrl}
                           alt={post.title}
+                          referrerPolicy="no-referrer"
                           className="w-16 h-12 object-cover rounded-lg bg-slate-100 shrink-0 border border-slate-200"
                         />
                       ) : (
@@ -625,8 +636,9 @@ export function ImportPostsModal({
               </div>
 
               {/* Rendered HTML content */}
-              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 max-h-96 overflow-y-auto prose prose-sm max-w-none text-slate-800">
+              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 max-h-96 overflow-y-auto text-sm text-slate-800 leading-relaxed">
                 <div
+                  className="space-y-3 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:text-slate-900 [&_h2]:text-base [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:pt-1 [&_h3]:text-sm [&_h3]:font-bold [&_h3]:text-slate-900 [&_p]:leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1 [&_blockquote]:border-l-4 [&_blockquote]:border-orange-300 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-slate-600 [&_a]:text-orange-600 [&_a]:underline [&_figure]:my-3 [&_figcaption]:text-xs [&_figcaption]:text-slate-500 [&_figcaption]:mt-1 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-2 [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:text-xs"
                   dangerouslySetInnerHTML={{
                     __html: aiEnhancedContent || previewingPost.content,
                   }}

@@ -19,10 +19,15 @@ export async function POST(req: NextRequest) {
     const cookieStore = await cookies();
     const expiresInSeconds = tokenInfo.expires_in && tokenInfo.expires_in > 0 ? tokenInfo.expires_in : 3600;
 
+    const isHttps =
+      req.nextUrl.protocol === 'https:' ||
+      req.headers.get('x-forwarded-proto') === 'https' ||
+      process.env.NODE_ENV === 'production';
+
     cookieStore.set(SESSION_COOKIE_NAME, accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isHttps,
+      sameSite: isHttps ? 'none' : 'lax',
       path: '/',
       maxAge: expiresInSeconds,
     });

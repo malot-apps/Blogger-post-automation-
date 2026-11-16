@@ -88,8 +88,8 @@ Return:
 
 Respond in JSON adhering to the specified schema.`;
 
-  // Models to attempt: primary gemini-3.8-flash with fallback to gemini-3.1-flash-lite on 503 high demand
-  const textModelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  // Models to attempt: primary gemini-4-hydrogen with fallback to gemini-3.1-flash-lite on 503 high demand
+  const textModelsToTry = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
   let lastError: unknown = null;
   let responseText: string | undefined;
 
@@ -114,7 +114,7 @@ Respond in JSON adhering to the specified schema.`;
             },
             config: {
               systemInstruction,
-              temperature: 0.7,
+              ...(model === 'gemini-4-hydrogen' ? {} : { temperature: 0.7 }),
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.OBJECT,

@@ -4,6 +4,7 @@ import {
   generateSeoArticleAndProofread,
   checkContentQualityAndSeo,
 } from '@/src/server/geminiService';
+import { sanitizeImportedHtml, decodeHtmlEntities } from '@/src/server/importedHtmlSanitizer';
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'rewrite') {
-      const { originalTitle = '', originalContent = '', tone = 'informative' } = body;
+      const { originalTitle = '', originalContent = '', tone = 'informative', sourceUrl } = body;
       if (!originalContent || typeof originalContent !== 'string') {
         return NextResponse.json({ error: 'originalContent is required for article rewrite.' }, { status: 400 });
       }
@@ -43,7 +44,16 @@ export async function POST(req: NextRequest) {
         tone,
         customApiKey,
       });
-      return NextResponse.json({ success: true, ...result });
+
+      const baseUrl = typeof sourceUrl === 'string' && sourceUrl.trim() ? sourceUrl.trim() : undefined;
+      const sanitizedRewrite = sanitizeImportedHtml(result.enhancedContentHtml || '', { baseUrl });
+
+      return NextResponse.json({
+        success: true,
+        ...result,
+        enhancedTitle: decodeHtmlEntities(result.enhancedTitle || String(originalTitle).trim()),
+        enhancedContentHtml: sanitizedRewrite.html || result.enhancedContentHtml,
+      });
     }
 
     if (action === 'seo-audit') {

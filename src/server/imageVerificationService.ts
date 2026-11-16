@@ -204,9 +204,22 @@ export async function verifyPublicImageUrl(
             Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
           },
         });
-      } catch (headError) {
-        // Some CDNs (including Google User Content under certain conditions) return 405 or fail on HEAD
-        // Fall back to a GET request requesting only the first 1KB
+
+        // Fall back to ranged GET if server rejects HEAD (400, 403, 405, 501)
+        if ([400, 403, 405, 501].includes(response.status)) {
+          response = await fetch(currentUrl, {
+            method: 'GET',
+            redirect: 'manual',
+            signal: controller.signal,
+            headers: {
+              'User-Agent': 'BloggerPublisher-ImageVerifier/1.0',
+              Range: 'bytes=0-1024',
+              Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            },
+          });
+        }
+      } catch {
+        // Some CDNs fail on HEAD connections; fall back to a GET request requesting only the first 1KB
         response = await fetch(currentUrl, {
           method: 'GET',
           redirect: 'manual',

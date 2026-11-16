@@ -61,7 +61,7 @@ Identify:
 
 Respond in JSON according to the schema.`;
 
-  const textModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  const textModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
   let lastError: unknown = null;
   let responseText: string | undefined;
 
@@ -86,7 +86,7 @@ Respond in JSON according to the schema.`;
             },
             config: {
               systemInstruction,
-              temperature: 0.7,
+              ...(model === 'gemini-4-hydrogen' ? {} : { temperature: 0.7 }),
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.OBJECT,
@@ -178,14 +178,16 @@ export async function regenerateSeoTitle({
   language = 'bn',
   previousTitles = [],
   contextSummary = '',
+  customApiKey,
 }: {
   imageBase64?: string;
   mimeType?: string;
   language?: 'bn' | 'en';
   previousTitles?: string[];
   contextSummary?: string;
+  customApiKey?: string;
 }): Promise<string> {
-  const ai = getGenAiClient();
+  const ai = getGenAiClient(customApiKey);
   const isBengali = language === 'bn';
 
   const systemInstruction = `You are an expert SEO title specialist for Google Blogger.
@@ -216,7 +218,7 @@ Rules:
     text: `Generate a new alternative SEO title in ${isBengali ? 'Bengali (বাংলা)' : 'English'}. Context: ${contextSummary || 'Uploaded photo'}. Do not repeat: ${previousTitles.join(' | ')}.`,
   });
 
-  const textModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  const textModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
   let lastError: unknown = null;
   let responseText: string | undefined;
 
@@ -229,7 +231,7 @@ Rules:
             contents: { parts },
             config: {
               systemInstruction,
-              temperature: 0.85,
+              ...(model === 'gemini-4-hydrogen' ? {} : { temperature: 0.85 }),
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.OBJECT,
@@ -310,7 +312,7 @@ Provide:
 
   const promptText = `Context / Topic: ${topicOrContext}\nLanguage: ${isBengali ? 'Bengali (বাংলা)' : 'English'}`;
 
-  const textModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  const textModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
   let lastError: unknown = null;
   let responseText: string | undefined;
 
@@ -322,7 +324,7 @@ Provide:
           contents: { text: promptText },
           config: {
             systemInstruction,
-            temperature: 0.75,
+            ...(model === 'gemini-4-hydrogen' ? {} : { temperature: 0.75 }),
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,
@@ -399,13 +401,15 @@ Guidelines:
   - A compelling meta description (120-155 characters).
   - Clean HTML body with <h2> and <h3> subheadings, well-spaced <p> paragraphs, and where appropriate <ul>/<li> bullet points.
   - DO NOT wrap in <html>, <head>, or <body> tags. Output only post body inner HTML.
+  - CRITICAL FOR IMAGES: If the Original Content contains any <img> or <figure> tags, you MUST preserve EVERY original <img> tag with its exact "src", "srcset" (if present), and meaningful "alt" attribute in its corresponding section/position inside enhancedContentHtml. Do NOT alter, invent, or remove genuine article image URLs.
+  - Do NOT add scripts, styles, ads, tracking pixels, or affiliate links.
   - Highlight key takeaways cleanly.
   - Fix any spelling, punctuation, or grammar issues from the original draft.
 - Return structured JSON according to the schema.`;
 
   const promptText = `Original Title: ${originalTitle}\n\nOriginal Content:\n${originalContent}`;
 
-  const textModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  const textModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
   let lastError: unknown = null;
   let responseText: string | undefined;
 
@@ -417,7 +421,7 @@ Guidelines:
           contents: { text: promptText },
           config: {
             systemInstruction,
-            temperature: 0.7,
+            ...(model === 'gemini-4-hydrogen' ? {} : { temperature: 0.7 }),
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,
@@ -499,7 +503,7 @@ Respond in JSON according to the schema.`;
 
   const promptText = `Title: ${title}\nContent:\n${content.slice(0, 4000)}`;
 
-  const textModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  const textModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
   let lastError: unknown = null;
   let responseText: string | undefined;
 
@@ -511,7 +515,7 @@ Respond in JSON according to the schema.`;
           contents: { text: promptText },
           config: {
             systemInstruction,
-            temperature: 0.3,
+            ...(model === 'gemini-4-hydrogen' ? {} : { temperature: 0.3 }),
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,

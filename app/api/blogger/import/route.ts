@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { importBloggerPostsFromSource } from '@/src/server/bloggerService';
+import { validateUrlForSsrf } from '@/src/server/imageVerificationService';
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,6 +14,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    let candidateUrl = sourceUrl.trim();
+    if (!/^https?:\/\//i.test(candidateUrl)) {
+      candidateUrl = `https://${candidateUrl}`;
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(candidateUrl);
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        throw new Error('Invalid protocol');
+      }
+    } catch {
+      return NextResponse.json(
+        { error: 'Please enter a valid HTTP or HTTPS Blogger blog URL (e.g. https://yourblog.blogspot.com).' },
+        { status: 400 }
+      );
+    }
+
+    const ssrfCheck = await validateUrlForSsrf(parsedUrl.origin);
+    if (!ssrfCheck.safe) {
+      return NextResponse.json(
+        { error: ssrfCheck.error || 'Invalid or restricted source blog URL.' },
+        { status: 400 }
+      );
+    }
+
     // Optional OAuth Bearer token if user is importing their own private/accessible blog
     let token: string | undefined;
     const authHeader = req.headers.get('Authorization');
@@ -21,7 +48,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await importBloggerPostsFromSource({
-      sourceUrl: sourceUrl.trim(),
+      sourceUrl: parsedUrl.toString(),
       accessToken: token,
       maxResults: Number(maxResults) || 25,
       pageToken: pageToken ? String(pageToken) : undefined,

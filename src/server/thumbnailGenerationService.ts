@@ -50,8 +50,8 @@ CONTAINER & RESPONSIVE FRAMING SPECIFICATIONS:
 
   // Currently supported Gemini native image models
   const primaryModel = 'gemini-3.1-flash-lite-image';
-  const fallbackModel = 'gemini-3.1-flash-image';
-  const modelsToTry = [primaryModel, fallbackModel, 'gemini-2.5-flash-image'];
+  const fallbackModel = 'gemini-nano-banana-2.1';
+  const modelsToTry = [primaryModel, fallbackModel];
 
   let lastError: unknown = null;
 

@@ -180,7 +180,7 @@ export const initAuth = (
         const errCode = (err as { code?: string })?.code;
         const errMsg = err instanceof Error ? err.message : String(err);
         if (errCode === 'auth/unauthorized-domain') {
-          console.error(
+          console.warn(
             `Firebase Auth Error: Domain "${window.location.hostname}" is not authorized in Firebase Console. Authorized production domain is: "${PRODUCTION_HOSTNAME}". Callback URI: "${OAUTH_CALLBACK_URI}"`
           );
         } else if (
@@ -189,7 +189,7 @@ export const initAuth = (
           errMsg.includes('verification process') ||
           errMsg.includes('Access blocked')
         ) {
-          console.error(
+          console.warn(
             'Unauthorized user (Google Error 403: access_denied): The Google OAuth consent screen is in "Testing" mode. To allow all Google accounts to sign in, click "Publish App" under Google Cloud Console > APIs & Services > OAuth consent screen. Until published, only configured Test Users can log in.'
           );
         } else {
@@ -291,7 +291,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       await signInWithRedirect(auth, provider);
       return null;
     }
-    console.error('Sign in error:', error);
+    console.warn('Sign in error:', error);
     throw error;
   } finally {
     isSigningIn = false;
@@ -312,7 +312,7 @@ export const googleSignInWithRedirect = async (): Promise<void> => {
     }
     await signInWithRedirect(auth, provider);
   } catch (error: unknown) {
-    console.error('Redirect sign in error:', error);
+    console.warn('Redirect sign in error:', error);
     throw error;
   } finally {
     isSigningIn = false;

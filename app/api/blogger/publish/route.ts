@@ -4,6 +4,8 @@ import { renderTemplate } from '@/src/server/templateService';
 import { generateTitleFromCaption } from '@/src/lib/titleGenerator';
 import { verifyImage } from '@/src/server/imageVerificationService';
 import { uploadAndVerifyImageOnBloggerHost } from '@/src/server/bloggerImageHostService';
+import { sanitizeImportedHtml, decodeHtmlEntities } from '@/src/server/importedHtmlSanitizer';
+import { resolveAndVerifyImportedArticleImages } from '@/src/server/importedImageResolver';
 
 /**
  * ARCHITECTURAL COMMENT #1:
@@ -66,7 +68,19 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { blogId, imageUrl, thumbnailUrl, caption, title, labels, customTemplate, isDraft } = body;
+    const {
+      blogId,
+      imageUrl,
+      thumbnailUrl,
+      caption,
+      contentHtml,
+      sourceUrl,
+      isImported,
+      title,
+      labels,
+      customTemplate,
+      isDraft,
+    } = body;
 
     if (!blogId || typeof blogId !== 'string') {
       return NextResponse.json(
@@ -83,6 +97,87 @@ export async function POST(req: NextRequest) {
         { error: 'Unauthorized user: You do not have permission to publish to this Blogger blog (blog not owned by your authenticated Google account).' },
         { status: 403 }
       );
+    }
+
+    // Parse labels helper shared by both paths
+    let parsedLabels: string[] = [];
+    if (Array.isArray(labels)) {
+      parsedLabels = labels.map((l) => String(l).trim()).filter(Boolean);
+    } else if (typeof labels === 'string' && labels.trim().length > 0) {
+      parsedLabels = labels
+        .split(',')
+        .map((l) => l.trim())
+        .filter(Boolean);
+    }
+
+    // ========================================================================
+    // IMPORTED ARTICLE PUBLISHING MODE (Preserves full article HTML & images)
+    // ========================================================================
+    if (isImported === true) {
+      const rawArticleHtml =
+        typeof contentHtml === 'string' && contentHtml.trim().length > 0
+          ? contentHtml
+          : typeof caption === 'string'
+            ? caption
+            : '';
+
+      if (!rawArticleHtml.trim()) {
+        return NextResponse.json(
+          { error: 'Imported post content is empty and cannot be published.' },
+          { status: 400 }
+        );
+      }
+
+      const safeBaseUrl =
+        typeof sourceUrl === 'string' && sourceUrl.trim().length > 0 ? sourceUrl.trim() : undefined;
+
+      // Server-side authoritative sanitization (strips scripts, ads, trackers, affiliate links, unnecessary CSS)
+      const sanitized = sanitizeImportedHtml(rawArticleHtml, { baseUrl: safeBaseUrl });
+
+      // Resolve and verify every <img> src / srcset so URLs remain valid on Blogger
+      const resolved = await resolveAndVerifyImportedArticleImages(sanitized.html, {
+        baseUrl: safeBaseUrl,
+        callerToken: token,
+      });
+
+      if (!resolved.html || resolved.html.trim().length === 0) {
+        return NextResponse.json(
+          { error: 'No valid article content remained after sanitization.' },
+          { status: 400 }
+        );
+      }
+
+      const rawTitle =
+        typeof title === 'string' && title.trim().length > 0
+          ? decodeHtmlEntities(title.trim())
+          : '';
+      const finalImportedTitle = rawTitle || generateTitleFromCaption(sanitized.plainText || 'Imported Post');
+
+      const publishedPost = await createAndPublishBloggerPost(token, {
+        blogId,
+        title: finalImportedTitle,
+        content: resolved.html,
+        labels: parsedLabels.length > 0 ? parsedLabels : undefined,
+        isDraft: Boolean(isDraft),
+      });
+
+      const primaryImg = resolved.verifiedUrls[0] || '';
+
+      return NextResponse.json({
+        success: true,
+        warnings: resolved.warnings,
+        post: {
+          id: publishedPost.id,
+          blogId: publishedPost.blog?.id || blogId,
+          title: publishedPost.title,
+          url: publishedPost.url,
+          imageUrl: primaryImg,
+          thumbnailUrl: primaryImg,
+          published: publishedPost.published,
+          labels: publishedPost.labels || parsedLabels,
+          content: resolved.html,
+        },
+      });
     }
 
     // Step 3: Validate image presence
@@ -211,17 +306,6 @@ export async function POST(req: NextRequest) {
     const finalTitle = (title && typeof title === 'string' && title.trim().length > 0)
       ? title.trim()
       : generateTitleFromCaption(caption);
-
-    // Format labels
-    let parsedLabels: string[] = [];
-    if (Array.isArray(labels)) {
-      parsedLabels = labels.map((l) => String(l).trim()).filter(Boolean);
-    } else if (typeof labels === 'string' && labels.trim().length > 0) {
-      parsedLabels = labels
-        .split(',')
-        .map((l) => l.trim())
-        .filter(Boolean);
-    }
 
     // Step 7: Render /templates/blogger-post-template.html with VERIFIED HTTPS image URLs
     const postHtml = renderTemplate(customTemplate, {

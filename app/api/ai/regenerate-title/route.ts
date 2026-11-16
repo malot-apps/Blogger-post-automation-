@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
       language: language === 'en' ? 'en' : 'bn',
       previousTitles: Array.isArray(previousTitles) ? previousTitles : [],
       contextSummary: typeof contextSummary === 'string' ? contextSummary : '',
+      customApiKey,
     });
 
     return NextResponse.json({

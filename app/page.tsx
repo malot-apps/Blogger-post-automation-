@@ -222,7 +222,7 @@ export default function Home() {
       if (errCode === 'auth/popup-closed-by-user' || msg.includes('popup-closed-by-user')) {
         return;
       }
-      console.error('Sign in error:', err);
+      console.warn('Sign in error:', err);
       setAuthError(msg);
     } finally {
       setIsSigningIn(false);
@@ -236,7 +236,7 @@ export default function Home() {
     try {
       await googleSignInWithRedirect();
     } catch (err: unknown) {
-      console.error('Redirect sign in error:', err);
+      console.warn('Redirect sign in error:', err);
       const msg = err instanceof Error ? err.message : 'Redirect sign in failed';
       setAuthError(msg);
       setIsSigningIn(false);

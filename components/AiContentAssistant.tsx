@@ -238,9 +238,13 @@ export function AiContentAssistant({
       setCurrentStyleIndex(nextIndex);
       const nextStyle = COMPOSITION_STYLES[nextIndex].id;
 
+      const userKey = typeof window !== 'undefined' ? localStorage.getItem('blogger_user_gemini_api_key') : null;
       const thumbRes = await fetch('/api/ai/generate-thumbnail', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(userKey ? { 'x-gemini-key': userKey } : {}),
+        },
         body: JSON.stringify({
           image: mainImageSrc,
           subjectContext: aiAnalysis ? `${aiAnalysis.mainSubject}. ${aiAnalysis.summary}` : '',
