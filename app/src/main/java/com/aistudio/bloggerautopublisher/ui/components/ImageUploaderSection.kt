@@ -347,7 +347,7 @@ fun ImageUploaderSection(
             }
         }
 
-        // 2. Separate Video Player Thumbnail (Optional)
+        // 2. Blogger Post Thumbnail Indicator (Always uses {{IMAGE_URL}})
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -365,9 +365,9 @@ fun ImageUploaderSection(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = PurpleAccent, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = OrangePrimary, modifier = Modifier.size(18.dp))
                     Text(
-                        text = "Video Player Thumbnail",
+                        text = "Blogger Post Thumbnail",
                         style = MaterialTheme.typography.titleMedium,
                         color = Slate900
                     )
@@ -376,13 +376,13 @@ fun ImageUploaderSection(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(Color(0xFFFAF5FF))
-                        .border(1.dp, Color(0xFFF3E8FF), RoundedCornerShape(50))
+                        .background(Color(0xFFFFF7ED))
+                        .border(1.dp, Color(0xFFFFEDD5), RoundedCornerShape(50))
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "{{THUMBNAIL_URL}}",
-                        color = PurpleAccent,
+                        text = "{{IMAGE_URL}}",
+                        color = OrangePrimary,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.SemiBold
@@ -392,104 +392,43 @@ fun ImageUploaderSection(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            if (!useSeparateThumbnail && effectiveThumbSrc == null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF8FAFC))
-                        .border(1.dp, Slate200, RoundedCornerShape(12.dp))
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Auto-using Main Image",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Slate700
-                        )
-                        Text(
-                            text = "Default: 16:9 thumbnail uses the main photo",
-                            fontSize = 11.sp,
-                            color = Slate400
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = { onToggleSeparateThumbnail(true) },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("custom_thumbnail_button")
-                    ) {
-                        Text("+ Custom Thumbnail", fontSize = 11.sp, color = PurpleAccent)
-                    }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFF8FAFC))
+                    .border(1.dp, Slate200, RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Auto-using Main Post Image",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Slate700
+                    )
+                    Text(
+                        text = "Main Post Image ({{IMAGE_URL}}) is automatically placed first and used as the Blogger post thumbnail.",
+                        fontSize = 11.sp,
+                        color = Slate400
+                    )
                 }
-            } else {
-                if (effectiveThumbSrc != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF0F172A))
-                    ) {
-                        AsyncImage(
-                            model = effectiveThumbSrc,
-                            contentDescription = "Thumbnail Preview",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(120.dp),
-                            contentScale = ContentScale.Fit
-                        )
 
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    pickThumbPhotoLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = 0.6f)),
-                                shape = CircleShape
-                            ) {
-                                Text("Change", fontSize = 10.sp, color = Color.White)
-                            }
-                            IconButton(
-                                onClick = onClearThumbnail,
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.6f))
-                            ) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White, modifier = Modifier.size(14.dp))
-                            }
-                        }
-                    }
-                } else {
+                if (effectiveMainImageSrc != null) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Emerald50)
+                            .border(1.dp, EmeraldBorder, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Button(
-                            onClick = {
-                                pickThumbPhotoLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = PurpleAccent),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Upload Thumbnail", fontSize = 11.sp)
-                        }
-
-                        TextButton(onClick = { onToggleSeparateThumbnail(false) }) {
-                            Text("Cancel", fontSize = 11.sp, color = Slate500)
-                        }
+                        Icon(Icons.Default.Check, contentDescription = null, tint = Emerald600, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Synced", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Emerald600)
                     }
                 }
             }

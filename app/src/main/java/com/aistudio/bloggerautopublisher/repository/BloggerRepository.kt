@@ -25,10 +25,19 @@ class BloggerRepository(context: Context) {
     private val _selectedBlogId = MutableStateFlow(prefs.getString("selected_blog_id", "").orEmpty())
     val selectedBlogId: StateFlow<String> = _selectedBlogId.asStateFlow()
 
-    private val _template = MutableStateFlow(
-        prefs.getString("custom_template", BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE)
+    private val _template = MutableStateFlow(loadMigratedTemplate())
+
+    private fun loadMigratedTemplate(): String {
+        val saved = prefs.getString("custom_template", BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE)
             ?: BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE
-    )
+        val migrated = saved
+            .replace("""id="videoThumbnail" src="{{THUMBNAIL_URL}}"""", """id="videoThumbnail" src="{{IMAGE_URL}}"""")
+            .replace("""CUSTOM_THUMBNAIL_URL = "{{THUMBNAIL_URL}}";""", """CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";""")
+        if (migrated != saved) {
+            prefs.edit().putString("custom_template", migrated).apply()
+        }
+        return migrated
+    }
     val template: StateFlow<String> = _template.asStateFlow()
 
     private val _postHistory = MutableStateFlow<List<PublishedPost>>(loadSavedPosts())

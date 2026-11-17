@@ -70,6 +70,8 @@ fun AiAssistantSection(
     isRegeneratingThumbnail: Boolean,
     currentThumbnailStyle: CompositionStyle,
     onRegenerateThumbnail: () -> Unit,
+    isMainImageUsingAiThumb: Boolean = false,
+    onApplyAiThumbnailAsMain: () -> Unit = {},
     aiError: String?
 ) {
     val isTitleApplied = aiAnalysis != null && currentTitle == aiAnalysis.title
@@ -404,13 +406,19 @@ fun AiAssistantSection(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Button(
-                                onClick = {},
-                                colors = ButtonDefaults.buttonColors(containerColor = PurpleAccent),
+                                onClick = onApplyAiThumbnailAsMain,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isMainImageUsingAiThumb) Emerald600 else PurpleAccent
+                                ),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("✓ Thumbnail in Use", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = if (isMainImageUsingAiThumb) "✓ Main Image in Use" else "✓ Use as Main Image",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
 
                             OutlinedButton(

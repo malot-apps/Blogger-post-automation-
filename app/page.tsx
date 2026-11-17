@@ -54,10 +54,6 @@ export default function Home() {
   const [mainImageResult, setMainImageResult] = useState<ImageProcessingResult | null>(null);
   const [mainImageUrlOverride, setMainImageUrlOverride] = useState<string | null>(null);
 
-  // Thumbnail Image state
-  const [thumbnailResult, setThumbnailResult] = useState<ImageProcessingResult | null>(null);
-  const [thumbnailUrlOverride, setThumbnailUrlOverride] = useState<string | null>(null);
-
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [caption, setCaption] = useState('');
   const [title, setTitle] = useState('');
@@ -66,7 +62,21 @@ export default function Home() {
   // Template & Settings state
   const [customTemplate, setCustomTemplate] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem(STORAGE_KEY_TEMPLATE) || DEFAULT_MASTER_TEMPLATE;
+      const saved = localStorage.getItem(STORAGE_KEY_TEMPLATE);
+      if (saved) {
+        const migrated = saved
+          .replace(/id="videoThumbnail" src="\{\{THUMBNAIL_URL\}\}"/g, 'id="videoThumbnail" src="{{IMAGE_URL}}"')
+          .replace(/CUSTOM_THUMBNAIL_URL = "\{\{THUMBNAIL_URL\}\}";/g, 'CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";');
+        if (migrated !== saved) {
+          try {
+            localStorage.setItem(STORAGE_KEY_TEMPLATE, migrated);
+          } catch {
+            // ignore
+          }
+        }
+        return migrated;
+      }
+      return DEFAULT_MASTER_TEMPLATE;
     }
     return DEFAULT_MASTER_TEMPLATE;
   });
@@ -253,8 +263,6 @@ export default function Home() {
     setPublishedPost(null);
     setMainImageResult(null);
     setMainImageUrlOverride(null);
-    setThumbnailResult(null);
-    setThumbnailUrlOverride(null);
     setCaption('');
     setTitle('');
     setLabels('');
@@ -297,9 +305,8 @@ export default function Home() {
     }
   };
 
-  // Active image sources
+  // Active image source (Main Post Image is always used as the Blogger post thumbnail)
   const activeMainImageSrc = mainImageUrlOverride || mainImageResult?.dataUrl || null;
-  const activeThumbnailSrc = thumbnailUrlOverride || thumbnailResult?.dataUrl || null;
   const canPublish = Boolean(activeMainImageSrc && caption.trim().length > 0 && selectedBlogId);
 
   // Active post title
@@ -344,7 +351,7 @@ export default function Home() {
         body: JSON.stringify({
           blogId: selectedBlogId,
           imageUrl: activeMainImageSrc,
-          thumbnailUrl: activeThumbnailSrc || activeMainImageSrc,
+          thumbnailUrl: activeMainImageSrc,
           caption: caption.trim(),
           title: title.trim() || undefined,
           labels: labels.trim() || undefined,
@@ -366,10 +373,10 @@ export default function Home() {
         blogId: data.post.blogId,
         title: data.post.title,
         url: data.post.url,
-        thumbnailUrl: data.post.thumbnailUrl,
+        thumbnailUrl: data.post.imageUrl || data.post.thumbnailUrl || activeMainImageSrc,
         published: data.post.published,
         labels: data.post.labels,
-        imageUrl: activeMainImageSrc,
+        imageUrl: data.post.imageUrl || activeMainImageSrc,
       };
       setPublishedPost(newPostData);
 
@@ -382,7 +389,7 @@ export default function Home() {
           title: data.post.title,
           caption: caption.trim() || undefined,
           url: data.post.url,
-          thumbnailUrl: data.post.thumbnailUrl || activeMainImageSrc,
+          thumbnailUrl: data.post.imageUrl || data.post.thumbnailUrl || activeMainImageSrc,
           labels: data.post.labels || labels.trim() || undefined,
           publishedAt: new Date().toISOString(),
         };
@@ -403,8 +410,6 @@ export default function Home() {
   const handleResetForm = () => {
     setMainImageResult(null);
     setMainImageUrlOverride(null);
-    setThumbnailResult(null);
-    setThumbnailUrlOverride(null);
     setCaption('');
     setTitle('');
     setLabels('');
@@ -550,19 +555,13 @@ export default function Home() {
               </div>
             )}
 
-            {/* Step 1: Image Uploader Area (Main Image & Thumbnail Image) */}
+            {/* Step 1: Image Uploader Area (Main Image -> used as Blogger Post Thumbnail) */}
             <ImageUploader
               mainImageResult={mainImageResult}
               mainImageUrlOverride={mainImageUrlOverride}
               onMainImageSelected={(res, url) => {
                 setMainImageResult(res);
                 setMainImageUrlOverride(url || null);
-              }}
-              thumbnailResult={thumbnailResult}
-              thumbnailUrlOverride={thumbnailUrlOverride}
-              onThumbnailSelected={(res, url) => {
-                setThumbnailResult(res);
-                setThumbnailUrlOverride(url || null);
               }}
               isProcessing={isProcessingImage}
               setIsProcessing={setIsProcessingImage}
@@ -618,7 +617,7 @@ export default function Home() {
         onClose={() => setIsPreviewOpen(false)}
         title={effectiveTitle}
         imageUrl={activeMainImageSrc || ''}
-        thumbnailUrl={activeThumbnailSrc || activeMainImageSrc || ''}
+        thumbnailUrl={activeMainImageSrc || ''}
         caption={caption}
         labels={labels}
         templateString={customTemplate}

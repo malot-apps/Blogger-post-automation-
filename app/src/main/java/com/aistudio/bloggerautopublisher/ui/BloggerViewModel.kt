@@ -260,7 +260,7 @@ class BloggerViewModel(
                     apiKey = userKey
                 )
 
-                // Generate 16:9 thumbnail if bitmap is available
+                // Generate optional 16:9 composition preview if bitmap is available (without overriding Blogger thumbnail)
                 if (sourceBitmap != null) {
                     val composedThumb = ImageOptimizer.compose16x9Thumbnail(
                         context = context,
@@ -270,8 +270,7 @@ class BloggerViewModel(
                     )
                     _uiState.update {
                         it.copy(
-                            thumbnailImage = composedThumb,
-                            useSeparateThumbnail = true
+                            thumbnailImage = composedThumb
                         )
                     }
                 }
@@ -342,13 +341,22 @@ class BloggerViewModel(
                     it.copy(
                         thumbnailImage = thumb,
                         currentThumbnailStyle = nextStyle,
-                        useSeparateThumbnail = true,
                         isRegeneratingThumbnail = false
                     )
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isRegeneratingThumbnail = false) }
             }
+        }
+    }
+
+    fun applyAiThumbnailAsMain() {
+        val aiThumb = _uiState.value.thumbnailImage ?: return
+        _uiState.update {
+            it.copy(
+                mainImage = aiThumb,
+                mainImageUrlOverride = null
+            )
         }
     }
 
@@ -408,9 +416,7 @@ class BloggerViewModel(
             ?: state.mainImage?.uri?.toString()
             ?: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=1200&q=80"
 
-        val effectiveThumbUrl = state.thumbnailUrlOverride
-            ?: state.thumbnailImage?.uri?.toString()
-            ?: effectiveImageUrl
+        val effectiveThumbUrl = effectiveImageUrl
 
         val postHtml = BloggerTemplateEngine.renderTemplate(
             template = state.customTemplate,

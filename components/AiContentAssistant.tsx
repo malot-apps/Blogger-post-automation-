@@ -25,9 +25,8 @@ interface AiContentAssistantProps {
   mainImageSrc: string | null;
   onSelectMainImageTrigger: () => void;
   onApplyTitle: (title: string) => void;
-  onApplyThumbnail: (dataUrl: string) => void;
+  onApplyAsMainImage: (dataUrl: string) => void;
   currentTitle: string;
-  currentThumbnailSrc: string | null;
 }
 
 interface ImageAnalysisData {
@@ -52,9 +51,8 @@ export function AiContentAssistant({
   mainImageSrc,
   onSelectMainImageTrigger,
   onApplyTitle,
-  onApplyThumbnail,
+  onApplyAsMainImage,
   currentTitle,
-  currentThumbnailSrc,
 }: AiContentAssistantProps) {
   // Language selector: 'bn' (বাংলা) or 'en' (English) - Default: বাংলা
   const [language, setLanguage] = useState<'bn' | 'en'>('bn');
@@ -78,8 +76,8 @@ export function AiContentAssistant({
 
   // Derived feedback states (no effect needed)
   const isTitleApplied = Boolean(editableAiTitle && currentTitle === editableAiTitle);
-  const isThumbnailApplied = Boolean(
-    aiThumbnailResult && currentThumbnailSrc === aiThumbnailResult.dataUrl
+  const isMainImageApplied = Boolean(
+    aiThumbnailResult && mainImageSrc === aiThumbnailResult.dataUrl
   );
 
   /**
@@ -162,7 +160,6 @@ export function AiContentAssistant({
           };
 
           setAiThumbnailResult(composed);
-          onApplyThumbnail(thumbJson.thumbnailUrl);
           setThumbnailError(null);
         } else {
           // Thumbnail generation failed, but DO NOT fail title or overall feature
@@ -270,7 +267,6 @@ export function AiContentAssistant({
       };
 
       setAiThumbnailResult(thumbResult);
-      onApplyThumbnail(generatedDataUrl);
       setThumbnailError(null);
     } catch (err: unknown) {
       const msg =
@@ -508,35 +504,35 @@ export function AiContentAssistant({
                     <span className="bg-black/60 backdrop-blur-xs px-2 py-0.5 rounded-full font-semibold">
                       Centered Safe Zone (Cover Fit)
                     </span>
-                    <span className="bg-purple-600/80 backdrop-blur-xs px-2 py-0.5 rounded-full font-mono">
-                      &#123;&#123;THUMBNAIL_URL&#125;&#125;
+                    <span className="bg-orange-600/80 backdrop-blur-xs px-2 py-0.5 rounded-full font-mono">
+                      &#123;&#123;IMAGE_URL&#125;&#125;
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons for Thumbnail */}
+              {/* Action Buttons for AI 16:9 Image */}
               <div className="flex items-center justify-between pt-1">
                 <button
                   type="button"
                   onClick={() => {
-                    onApplyThumbnail(aiThumbnailResult.dataUrl);
+                    onApplyAsMainImage(aiThumbnailResult.dataUrl);
                   }}
                   className={`text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-colors cursor-pointer ${
-                    isThumbnailApplied
+                    isMainImageApplied
                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-300'
                       : 'bg-purple-600 hover:bg-purple-700 text-white shadow-2xs'
                   }`}
                 >
-                  {isThumbnailApplied ? (
+                  {isMainImageApplied ? (
                     <>
                       <CheckCheck className="w-3.5 h-3.5" />
-                      <span>✓ Thumbnail in Use</span>
+                      <span>✓ Main Image in Use</span>
                     </>
                   ) : (
                     <>
                       <Check className="w-3.5 h-3.5" />
-                      <span>✓ Use AI Thumbnail</span>
+                      <span>✓ Use as Main Image</span>
                     </>
                   )}
                 </button>

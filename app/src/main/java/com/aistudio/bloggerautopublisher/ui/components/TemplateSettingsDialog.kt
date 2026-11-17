@@ -186,7 +186,7 @@ fun TemplateSettingsDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                for (tag in listOf("{{IMAGE_URL}}", "{{THUMBNAIL_URL}}", "{{CAPTION}}", "{{TITLE}}")) {
+                                for (tag in listOf("{{IMAGE_URL}}", "{{CAPTION}}", "{{TITLE}}", "{{PUBLISHED_DATE}}")) {
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))

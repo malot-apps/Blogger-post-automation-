@@ -83,12 +83,12 @@ fun PostPreviewDialog(
     var deviceMode by remember { mutableStateOf("mobile") } // mobile or desktop
 
     val effectiveTitle = if (title.isNotBlank()) title else TitleGenerator.generateTitleFromCaption(caption)
-    val renderedHtml = remember(effectiveTitle, imageUrl, thumbnailUrl, caption, template) {
+    val renderedHtml = remember(effectiveTitle, imageUrl, caption, template) {
         BloggerTemplateEngine.renderTemplate(
             template = template,
             title = effectiveTitle,
             imageUrl = imageUrl,
-            thumbnailUrl = thumbnailUrl,
+            thumbnailUrl = imageUrl,
             caption = caption
         )
     }

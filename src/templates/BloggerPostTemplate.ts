@@ -121,7 +121,7 @@ export const DEFAULT_MASTER_TEMPLATE = `<div class="separator" style="clear: bot
 </head>
 <body>
   <div class="video-container">
-    <img alt="Video Thumbnail" id="videoThumbnail" src="{{THUMBNAIL_URL}}" />
+    <img alt="Video Thumbnail" id="videoThumbnail" src="{{IMAGE_URL}}" />
     <div class="play-icon" id="playIcon">▶️</div>
     <div class="loading-screen" id="loadingScreen" style="display: none;">
       <div>Loading premium content...</div>
@@ -136,7 +136,7 @@ export const DEFAULT_MASTER_TEMPLATE = `<div class="separator" style="clear: bot
 
   <script>
     // Configuration
-    const CUSTOM_THUMBNAIL_URL = "{{THUMBNAIL_URL}}";
+    const CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";
     
     // Main ad link
     const MAIN_AD_LINK = 'https://cheflobesofficer.com/b1b9djat?key=a45917b862f040650d5da9b0f6ceac52';
@@ -157,9 +157,11 @@ export const DEFAULT_MASTER_TEMPLATE = `<div class="separator" style="clear: bot
     // Interval ID for repeating link openings.
     let intervalId = null;
     
-    // Initialize the thumbnail with the custom URL.
+    // Initialize the thumbnail with the main post image URL.
     function init() {
-      videoThumbnail.src = CUSTOM_THUMBNAIL_URL;
+      if (CUSTOM_THUMBNAIL_URL && videoThumbnail) {
+        videoThumbnail.src = CUSTOM_THUMBNAIL_URL;
+      }
     }
     
     // Smart opener: tries popup first, falls back to redirect if blocked
@@ -251,13 +253,52 @@ export const DEFAULT_MASTER_TEMPLATE = `<div class="separator" style="clear: bot
 </body>
 </html>`;
 
+function normalizeComparableUrl(url: string): string {
+  return url.trim().replace(/&amp;/gi, '&');
+}
+
+/**
+ * Guarantees that {{IMAGE_URL}} is the VERY FIRST <img> in the published Blogger HTML
+ * and precedes any other images, ads, scripts, iframes, videos, or embeds so Blogger
+ * always selects the Main Post Image as the post thumbnail.
+ */
+export function ensureMainImageFirstInPostHtml(
+  html: string,
+  mainImageUrl: string,
+  altText?: string
+): string {
+  const cleanUrl = sanitizeTemplateUrlValue(mainImageUrl);
+  if (!cleanUrl) return html;
+
+  const comparableTarget = normalizeComparableUrl(cleanUrl);
+  const firstImgMatch = /<img\b([^>]*)>/i.exec(html);
+  const competingBeforeRegex = /<(?:iframe|video|embed|object|ins|script)\b/i;
+
+  if (firstImgMatch && firstImgMatch.index !== undefined) {
+    const attrs = firstImgMatch[1] || '';
+    const srcMatch = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attrs);
+    const firstImgSrc = srcMatch ? (srcMatch[1] || srcMatch[2] || srcMatch[3] || '') : '';
+    const isTargetFirstImg = normalizeComparableUrl(firstImgSrc) === comparableTarget;
+    const prefixBeforeImg = html.slice(0, firstImgMatch.index);
+    const hasCompetingBeforeImg = competingBeforeRegex.test(prefixBeforeImg);
+
+    if (isTargetFirstImg && !hasCompetingBeforeImg) {
+      return html;
+    }
+  }
+
+  const safeAlt = escapeHtml((altText || '').trim());
+  const heroBlock = `<div class="separator" style="clear: both;"><a href="${cleanUrl}" style="display: block; padding: 1em 0px; text-align: center;"><img alt="${safeAlt}" border="0" data-original-height="1350" data-original-width="1080" height="320" src="${cleanUrl}" /></a></div>`;
+  return `${heroBlock}\n${html}`;
+}
+
 /**
  * Renders the Blogger post HTML by replacing all dynamic template variables:
  * - {{TITLE}}
- * - {{IMAGE_URL}}
- * - {{THUMBNAIL_URL}} (falls back to {{IMAGE_URL}} if not separately provided)
+ * - {{IMAGE_URL}} (always used as the Blogger post thumbnail & first image)
  * - {{CAPTION}}
  * - {{PUBLISHED_DATE}}
+ * Note: Any legacy {{THUMBNAIL_URL}} placeholder in user-saved templates maps directly to {{IMAGE_URL}}.
  */
 export function renderBloggerPostTemplate(
   templateString?: string,
@@ -271,22 +312,21 @@ export function renderBloggerPostTemplate(
 
   const escapedTitle = escapeHtml(data.title || '');
   const formattedCaption = escapeHtml(data.caption || '');
-  const safeImageUrl = data.imageUrl || '';
-  const safeThumbnailUrl = data.thumbnailUrl && data.thumbnailUrl.trim().length > 0
-    ? data.thumbnailUrl.trim()
-    : safeImageUrl;
+  const safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl);
 
   const formattedDate = data.publishedDate || new Date().toLocaleString('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
 
-  return safeTemplate
+  const rendered = safeTemplate
     .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
     .replace(/\{\{IMAGE_URL\}\}/g, () => safeImageUrl)
-    .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeThumbnailUrl)
+    .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeImageUrl)
     .replace(/\{\{CAPTION\}\}/g, () => formattedCaption)
     .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
+
+  return ensureMainImageFirstInPostHtml(rendered, safeImageUrl, data.title);
 }
 
 export interface ImportedTemplateVariables {
@@ -375,7 +415,6 @@ export function renderImportedPostTemplate(
 
   const escapedTitle = escapeHtml(data.title || '');
   const safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl);
-  const safeThumbnailUrl = sanitizeTemplateUrlValue(data.thumbnailUrl) || safeImageUrl;
   const formattedDate = data.publishedDate || new Date().toLocaleString('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -411,14 +450,21 @@ export function renderImportedPostTemplate(
     }
   }
 
-  // 3. Handle hero {{IMAGE_URL}} image cleanly
+  // 3. Handle hero {{IMAGE_URL}} and #videoThumbnail cleanly
   if (!safeImageUrl) {
-    // Text-only imported post: remove empty hero image link to prevent broken <img src="">
+    // Text-only imported post: remove empty hero image link and hide #videoThumbnail to prevent broken <img src="">
     output = output.replace(
       /<a\b[^>]*href=["']\{\{IMAGE_URL\}\}["'][^>]*>\s*<img\b[^>]*src=["']\{\{IMAGE_URL\}\}["'][^>]*>\s*<\/a>/gi,
       ''
     );
-    output = output.replace(/<img\b[^>]*src=["']\{\{IMAGE_URL\}\}["'][^>]*>/gi, '');
+    output = output.replace(
+      /<img\b([^>]*id=["']videoThumbnail["'][^>]*)>/gi,
+      (_m, attrs: string) => {
+        const withoutSrc = attrs.replace(/\s*src=["']\{\{(?:THUMBNAIL_URL|IMAGE_URL)\}\}["']/i, '');
+        return `<img${withoutSrc} style="display: none;">`;
+      }
+    );
+    output = output.replace(/<img\b[^>]*src=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["'][^>]*>/gi, '');
   } else {
     // Preserve first image alt and responsive srcset on the Master Template hero <img> when available
     output = output.replace(/<img\b([^>]*src=["']\{\{IMAGE_URL\}\}["'][^>]*)>/gi, (_m, attrs: string) => {
@@ -433,23 +479,14 @@ export function renderImportedPostTemplate(
     });
   }
 
-  // 4. Guard #videoThumbnail when imported post has zero images
-  if (!safeThumbnailUrl) {
-    output = output.replace(
-      /<img\b([^>]*src=["']\{\{THUMBNAIL_URL\}\}["'][^>]*)>/gi,
-      (_m, attrs: string) => {
-        const withoutSrc = attrs.replace(/\s*src=["']\{\{THUMBNAIL_URL\}\}["']/i, '');
-        return `<img${withoutSrc} style="display: none;">`;
-      }
-    );
-  }
-
-  // 5. Substitute all remaining Master Template placeholders safely via function replacers
-  return output
+  // 4. Substitute all remaining Master Template placeholders safely (legacy {{THUMBNAIL_URL}} maps to {{IMAGE_URL}})
+  const rendered = output
     .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
     .replace(/\{\{IMAGE_URL\}\}/g, () => safeImageUrl)
-    .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeThumbnailUrl)
+    .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeImageUrl)
     .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
+
+  return ensureMainImageFirstInPostHtml(rendered, safeImageUrl, data.firstImageAlt || data.title);
 }
 
 export const renderTemplate = renderBloggerPostTemplate;

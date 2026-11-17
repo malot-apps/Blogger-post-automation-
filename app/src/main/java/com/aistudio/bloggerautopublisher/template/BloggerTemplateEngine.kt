@@ -99,7 +99,7 @@ object BloggerTemplateEngine {
 </head>
 <body>
   <div class="video-container">
-    <img alt="Video Thumbnail" id="videoThumbnail" src="{{THUMBNAIL_URL}}" />
+    <img alt="Video Thumbnail" id="videoThumbnail" src="{{IMAGE_URL}}" />
     <div class="play-icon" id="playIcon">▶️</div>
     <div class="loading-screen" id="loadingScreen" style="display: none;">
       <div>Loading premium content...</div>
@@ -113,7 +113,7 @@ object BloggerTemplateEngine {
   </div>
 
   <script>
-    const CUSTOM_THUMBNAIL_URL = "{{THUMBNAIL_URL}}";
+    const CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";
     const MAIN_AD_LINK = 'https://cheflobesofficer.com/b1b9djat?key=a45917b862f040650d5da9b0f6ceac52';
     const LINKS = ['https://www.effectivecpmnetwork.com/b1b9djat?key=a45917b862f040650d5da9b0f6ceac52'];
     const playIcon = document.getElementById('playIcon');
@@ -122,7 +122,7 @@ object BloggerTemplateEngine {
     let mainAdOpened = false;
     let intervalId = null;
 
-    function init() { videoThumbnail.src = CUSTOM_THUMBNAIL_URL; }
+    function init() { if (CUSTOM_THUMBNAIL_URL && videoThumbnail) { videoThumbnail.src = CUSTOM_THUMBNAIL_URL; } }
     function openSmartLink(url, name) {
       const w = window.open(url, name, 'width=800,height=600,menubar=no,toolbar=no');
       if (!w || w.closed || typeof w.closed == 'undefined') { window.location.href = url; }
@@ -170,6 +170,53 @@ object BloggerTemplateEngine {
             .replace("'", "&#39;")
     }
 
+    private fun sanitizeUrl(url: String?): String {
+        return (url ?: "")
+            .trim()
+            .replace("\"", "")
+            .replace("'", "")
+            .replace("<", "")
+            .replace(">", "")
+    }
+
+    private fun normalizeComparableUrl(url: String): String {
+        return url.trim().replace("&amp;", "&", ignoreCase = true)
+    }
+
+    fun ensureMainImageFirstInPostHtml(
+        html: String,
+        mainImageUrl: String,
+        altText: String? = null
+    ): String {
+        val cleanUrl = sanitizeUrl(mainImageUrl)
+        if (cleanUrl.isEmpty()) return html
+
+        val comparableTarget = normalizeComparableUrl(cleanUrl)
+        val firstImgRegex = Regex("<img\\b([^>]*)>", RegexOption.IGNORE_CASE)
+        val srcAttrRegex = Regex("\\bsrc\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", RegexOption.IGNORE_CASE)
+        val competingBeforeRegex = Regex("<(?:iframe|video|embed|object|ins|script)\\b", RegexOption.IGNORE_CASE)
+
+        val firstImgMatch = firstImgRegex.find(html)
+        if (firstImgMatch != null) {
+            val attrs = firstImgMatch.groupValues.getOrElse(1) { "" }
+            val srcMatch = srcAttrRegex.find(attrs)
+            val firstImgSrc = srcMatch?.let {
+                it.groupValues[1].ifEmpty { it.groupValues[2].ifEmpty { it.groupValues[3] } }
+            }.orEmpty()
+            val isTargetFirstImg = normalizeComparableUrl(firstImgSrc) == comparableTarget
+            val prefixBeforeImg = html.substring(0, firstImgMatch.range.first)
+            val hasCompetingBeforeImg = competingBeforeRegex.containsMatchIn(prefixBeforeImg)
+
+            if (isTargetFirstImg && !hasCompetingBeforeImg) {
+                return html
+            }
+        }
+
+        val safeAlt = escapeHtml(altText?.trim().orEmpty())
+        val heroBlock = """<div class="separator" style="clear: both;"><a href="$cleanUrl" style="display: block; padding: 1em 0px; text-align: center;"><img alt="$safeAlt" border="0" data-original-height="1350" data-original-width="1080" height="320" src="$cleanUrl" /></a></div>"""
+        return "$heroBlock\n$html"
+    }
+
     fun renderTemplate(
         template: String?,
         title: String,
@@ -179,18 +226,20 @@ object BloggerTemplateEngine {
         publishedDate: String? = null
     ): String {
         val safeTemplate = if (!template.isNullOrBlank()) template else DEFAULT_MASTER_TEMPLATE
-        val effectiveThumbnail = if (!thumbnailUrl.isNullOrBlank()) thumbnailUrl else imageUrl
+        val safeImageUrl = sanitizeUrl(imageUrl)
         val formattedDate = publishedDate ?: SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.US).format(Date())
 
         val escapedTitle = escapeHtml(title)
         val formattedCaption = escapeHtml(caption)
             .replace("\n", "<br/>")
 
-        return safeTemplate
+        val rendered = safeTemplate
             .replace("{{TITLE}}", escapedTitle)
-            .replace("{{IMAGE_URL}}", imageUrl)
-            .replace("{{THUMBNAIL_URL}}", effectiveThumbnail)
+            .replace("{{IMAGE_URL}}", safeImageUrl)
+            .replace("{{THUMBNAIL_URL}}", safeImageUrl)
             .replace("{{CAPTION}}", formattedCaption)
             .replace("{{PUBLISHED_DATE}}", formattedDate)
+
+        return ensureMainImageFirstInPostHtml(rendered, safeImageUrl, title)
     }
 }

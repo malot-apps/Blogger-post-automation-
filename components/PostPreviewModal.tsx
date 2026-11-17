@@ -49,14 +49,10 @@ export function PostPreviewModal({
 
   if (!isOpen) return null;
 
-  const effectiveThumbnailUrl = thumbnailUrl && thumbnailUrl.trim().length > 0
-    ? thumbnailUrl.trim()
-    : imageUrl;
-
   const finalHtml = renderBloggerPostTemplate(templateString, {
     title,
     imageUrl,
-    thumbnailUrl: effectiveThumbnailUrl,
+    thumbnailUrl: imageUrl,
     caption,
   });
 
@@ -143,7 +139,7 @@ export function PostPreviewModal({
             </span>
             <span className="flex items-center space-x-1">
               <Film className="w-3 h-3 text-purple-500" />
-              <span>Thumbnail: {thumbnailUrl ? 'Custom' : 'Sync'}</span>
+              <span>Thumbnail: {imageUrl || thumbnailUrl ? 'Main Image' : 'Not Set'}</span>
             </span>
           </div>
         </div>

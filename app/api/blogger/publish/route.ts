@@ -154,16 +154,17 @@ export async function POST(req: NextRequest) {
       const finalImportedTitle = rawTitle || generateTitleFromCaption(sanitized.plainText || 'Imported Post');
 
       let primaryImg = resolved.verifiedUrls[0] || '';
-      let verifiedThumbUrl = primaryImg;
 
-      if (!primaryImg && typeof thumbnailUrl === 'string' && thumbnailUrl.trim().length > 0) {
-        const cleanThumbCandidate = thumbnailUrl.trim();
-        const httpsCandidate = cleanThumbCandidate.startsWith('http://')
-          ? `https://${cleanThumbCandidate.slice(7)}`
-          : cleanThumbCandidate;
+      const fallbackImgCandidate =
+        (typeof imageUrl === 'string' && imageUrl.trim().length > 0 ? imageUrl.trim() : '') ||
+        (typeof thumbnailUrl === 'string' && thumbnailUrl.trim().length > 0 ? thumbnailUrl.trim() : '');
+
+      if (!primaryImg && fallbackImgCandidate) {
+        const httpsCandidate = fallbackImgCandidate.startsWith('http://')
+          ? `https://${fallbackImgCandidate.slice(7)}`
+          : fallbackImgCandidate;
         const thumbCheck = await verifyImage(httpsCandidate);
         if (thumbCheck.isValid && thumbCheck.verifiedUrl) {
-          verifiedThumbUrl = thumbCheck.verifiedUrl;
           primaryImg = thumbCheck.verifiedUrl;
         }
       }
@@ -173,7 +174,7 @@ export async function POST(req: NextRequest) {
         title: finalImportedTitle,
         articleHtml: resolved.html,
         imageUrl: primaryImg,
-        thumbnailUrl: verifiedThumbUrl || primaryImg,
+        thumbnailUrl: primaryImg,
         firstImageAlt: firstImgMeta?.alt,
         firstImageSrcset: firstImgMeta?.srcset,
         publishedDate:
@@ -199,7 +200,7 @@ export async function POST(req: NextRequest) {
           title: publishedPost.title,
           url: publishedPost.url,
           imageUrl: primaryImg,
-          thumbnailUrl: verifiedThumbUrl || primaryImg,
+          thumbnailUrl: primaryImg,
           published: publishedPost.published,
           labels: publishedPost.labels || parsedLabels,
           content: templatedPostHtml,
@@ -248,101 +249,45 @@ export async function POST(req: NextRequest) {
       verifiedMainImageUrl = hostUpload.imageUrl;
     }
 
-    // Step 6: Ensure Thumbnail Image is uploaded to dedicated Blogger host if supplied as raw base64 data
-    let rawThumbnailUrl = (thumbnailUrl && typeof thumbnailUrl === 'string' && thumbnailUrl.trim().length > 0)
-      ? thumbnailUrl.trim()
-      : verifiedMainImageUrl;
-
-    let verifiedThumbnailUrl = rawThumbnailUrl;
-
-    if (verifiedThumbnailUrl.startsWith('data:image/')) {
-      const thumbUpload = await uploadAndVerifyImageOnBloggerHost({
-        imageBase64OrDataUrl: verifiedThumbnailUrl,
-        fileName: 'thumbnail-cover.jpg',
-        callerBearerToken: token,
-      });
-
-      if (!thumbUpload.success || !thumbUpload.verified || !thumbUpload.imageUrl) {
-        return NextResponse.json(
-          {
-            success: false,
-            verified: false,
-            error: `Publishing blocked: Failed to host and verify Video Player Thumbnail on Blogger image host: ${
-              thumbUpload.error || 'Upload failed'
-            }`,
-          },
-          { status: 400 }
-        );
-      }
-      verifiedThumbnailUrl = thumbUpload.imageUrl;
-    }
-
     // ========================================================================
     // MANDATORY SERVER-SIDE VERIFICATION LOOP:
-    // Before creating the post on Blogger, re-verify EVERY image URL (main image
-    // and thumbnail) present in the request using the same 'verifyImage' utility
-    // to ensure they remain publicly accessible. Block publishing and return a
-    // descriptive error if any image fails.
+    // Re-verify Main Post Image ({{IMAGE_URL}}) using 'verifyImage' to ensure it
+    // remains publicly accessible. Main Post Image is always used as the Blogger
+    // post thumbnail and placed as the first image in the published post HTML.
     // ========================================================================
-    const imagesToVerify: Array<{
-      key: 'main' | 'thumbnail';
-      label: string;
-      url: string;
-    }> = [
-      {
-        key: 'main',
-        label: 'Main Post Image',
-        url: verifiedMainImageUrl,
-      },
-    ];
+    const verification = await verifyImage(verifiedMainImageUrl);
 
-    if (verifiedThumbnailUrl && verifiedThumbnailUrl !== verifiedMainImageUrl) {
-      imagesToVerify.push({
-        key: 'thumbnail',
-        label: 'Video Player Thumbnail',
-        url: verifiedThumbnailUrl,
-      });
+    if (!verification.isValid || !verification.verifiedUrl) {
+      return NextResponse.json(
+        {
+          success: false,
+          verified: false,
+          failedImage: 'Main Post Image',
+          failedUrl: verifiedMainImageUrl,
+          error: `Publishing blocked: Server-side verification loop failed for Main Post Image. ${
+            verification.error || 'The image URL is not publicly accessible.'
+          } Never publish a post containing broken, unverified, or private image URLs.`,
+        },
+        { status: 400 }
+      );
     }
 
-    for (const imageItem of imagesToVerify) {
-      const verification = await verifyImage(imageItem.url);
-
-      if (!verification.isValid || !verification.verifiedUrl) {
-        return NextResponse.json(
-          {
-            success: false,
-            verified: false,
-            failedImage: imageItem.label,
-            failedUrl: imageItem.url,
-            error: `Publishing blocked: Server-side verification loop failed for ${imageItem.label}. ${
-              verification.error || 'The image URL is not publicly accessible.'
-            } Never publish a post containing broken, unverified, or private image URLs.`,
-          },
-          { status: 400 }
-        );
-      }
-
-      if (imageItem.key === 'main') {
-        verifiedMainImageUrl = verification.verifiedUrl;
-      } else if (imageItem.key === 'thumbnail') {
-        verifiedThumbnailUrl = verification.verifiedUrl;
-      }
-    }
+    verifiedMainImageUrl = verification.verifiedUrl;
 
     // Determine final title
     const finalTitle = (title && typeof title === 'string' && title.trim().length > 0)
       ? title.trim()
       : generateTitleFromCaption(caption);
 
-    // Step 7: Render /templates/blogger-post-template.html with VERIFIED HTTPS image URLs
+    // Step 6: Render /templates/blogger-post-template.html using Main Post Image ({{IMAGE_URL}}) as thumbnail
     const postHtml = renderTemplate(customTemplate, {
       title: finalTitle,
       imageUrl: verifiedMainImageUrl,
-      thumbnailUrl: verifiedThumbnailUrl,
+      thumbnailUrl: verifiedMainImageUrl,
       caption: caption.trim(),
     });
 
-    // Step 8: Call Blogger API v3 to create and publish post to THAT USER's selected blog
+    // Step 7: Call Blogger API v3 to create and publish post to THAT USER's selected blog
     const publishedPost = await createAndPublishBloggerPost(token, {
       blogId,
       title: finalTitle,
@@ -351,7 +296,7 @@ export async function POST(req: NextRequest) {
       isDraft: Boolean(isDraft),
     });
 
-    // Step 9: Return the real published URL and verified images
+    // Step 8: Return the real published URL and verified Main Post Image
     return NextResponse.json({
       success: true,
       post: {
@@ -360,7 +305,7 @@ export async function POST(req: NextRequest) {
         title: publishedPost.title,
         url: publishedPost.url,
         imageUrl: verifiedMainImageUrl,
-        thumbnailUrl: verifiedThumbnailUrl,
+        thumbnailUrl: verifiedMainImageUrl,
         published: publishedPost.published,
         labels: publishedPost.labels || parsedLabels,
         content: postHtml,

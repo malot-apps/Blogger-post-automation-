@@ -3,6 +3,7 @@ import path from 'path';
 import { escapeHtml } from '../lib/sanitizer';
 import {
   DEFAULT_MASTER_TEMPLATE,
+  ensureMainImageFirstInPostHtml,
   renderImportedPostTemplate,
   type ImportedTemplateVariables,
 } from '../templates/BloggerPostTemplate';
@@ -33,10 +34,10 @@ export function loadMasterTemplate(): string {
 /**
  * Injects all dynamic variables into the master HTML template before Blogger publishing:
  * - {{TITLE}}
- * - {{IMAGE_URL}}
- * - {{THUMBNAIL_URL}}
+ * - {{IMAGE_URL}} (always used as the Blogger post thumbnail & first image)
  * - {{CAPTION}}
  * - {{PUBLISHED_DATE}}
+ * Note: Any legacy {{THUMBNAIL_URL}} placeholder in saved templates resolves directly to {{IMAGE_URL}}.
  */
 export function renderTemplate(
   templateString: string | undefined | null,
@@ -48,24 +49,21 @@ export function renderTemplate(
 
   const escapedTitle = escapeHtml(variables.title || '');
   const escapedCaption = escapeHtml(variables.caption || '');
-  const safeImageUrl = (variables.imageUrl || '').trim();
-  
-  // Thumbnail fallback rule: if no separate thumbnail is provided, use main imageUrl
-  const safeThumbnailUrl = variables.thumbnailUrl && variables.thumbnailUrl.trim().length > 0
-    ? variables.thumbnailUrl.trim()
-    : safeImageUrl;
+  const safeImageUrl = (variables.imageUrl || '').trim().replace(/["'<>]/g, '');
 
   const formattedDate = variables.publishedDate || new Date().toLocaleString('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
 
-  return rawTemplate
+  const rendered = rawTemplate
     .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
     .replace(/\{\{IMAGE_URL\}\}/g, () => safeImageUrl)
-    .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeThumbnailUrl)
+    .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeImageUrl)
     .replace(/\{\{CAPTION\}\}/g, () => escapedCaption)
     .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
+
+  return ensureMainImageFirstInPostHtml(rendered, safeImageUrl, variables.title);
 }
 
 /**

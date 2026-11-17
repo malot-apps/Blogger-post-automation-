@@ -118,7 +118,6 @@ function TemplateSettingsDialog({
 
   const hasTitle = templateText.includes('{{TITLE}}');
   const hasImage = templateText.includes('{{IMAGE_URL}}');
-  const hasThumbnail = templateText.includes('{{THUMBNAIL_URL}}');
   const hasCaption = templateText.includes('{{CAPTION}}');
   const hasDate = templateText.includes('{{PUBLISHED_DATE}}');
 
@@ -204,19 +203,6 @@ function TemplateSettingsDialog({
 
                   <button
                     type="button"
-                    onClick={() => handleInsertTag('{{THUMBNAIL_URL}}')}
-                    className={`text-[11px] font-mono px-2 py-1 rounded-md border flex items-center space-x-1 ${
-                      hasThumbnail
-                        ? 'bg-purple-50 border-purple-300 text-purple-800 font-medium'
-                        : 'bg-slate-100 border-slate-200 text-slate-600'
-                    }`}
-                  >
-                    {hasThumbnail && <Check className="w-3 h-3 text-purple-600 mr-0.5" />}
-                    <span>&#123;&#123;THUMBNAIL_URL&#125;&#125;</span>
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => handleInsertTag('{{CAPTION}}')}
                     className={`text-[11px] font-mono px-2 py-1 rounded-md border flex items-center space-x-1 ${
                       hasCaption
@@ -297,7 +283,7 @@ function TemplateSettingsDialog({
                 <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start space-x-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <span>
-                    Tip: Make sure your template contains <code className="font-bold">&#123;&#123;IMAGE_URL&#125;&#125;</code>, <code className="font-bold">&#123;&#123;THUMBNAIL_URL&#125;&#125;</code> and <code className="font-bold">&#123;&#123;CAPTION&#125;&#125;</code> placeholders.
+                    Tip: Make sure your template contains <code className="font-bold">&#123;&#123;IMAGE_URL&#125;&#125;</code> and <code className="font-bold">&#123;&#123;CAPTION&#125;&#125;</code> placeholders.
                   </span>
                 </div>
               )}

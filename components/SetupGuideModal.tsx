@@ -136,19 +136,15 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
               </div>
               <div className="bg-slate-100 p-2 rounded-lg border border-slate-200">
                 <code className="text-orange-700 font-bold">&#123;&#123;IMAGE_URL&#125;&#125;</code>
-                <p className="text-slate-500 font-sans text-[10px] mt-0.5">Post image source</p>
-              </div>
-              <div className="bg-slate-100 p-2 rounded-lg border border-slate-200">
-                <code className="text-orange-700 font-bold">&#123;&#123;THUMBNAIL_URL&#125;&#125;</code>
-                <p className="text-slate-500 font-sans text-[10px] mt-0.5">Video thumbnail image</p>
+                <p className="text-slate-500 font-sans text-[10px] mt-0.5">Post &amp; thumbnail image source</p>
               </div>
               <div className="bg-slate-100 p-2 rounded-lg border border-slate-200">
                 <code className="text-orange-700 font-bold">&#123;&#123;CAPTION&#125;&#125;</code>
                 <p className="text-slate-500 font-sans text-[10px] mt-0.5">Formatted text</p>
               </div>
-              <div className="bg-slate-100 p-2 rounded-lg border border-slate-200 col-span-2">
+              <div className="bg-slate-100 p-2 rounded-lg border border-slate-200">
                 <code className="text-orange-700 font-bold">&#123;&#123;PUBLISHED_DATE&#125;&#125;</code>
-                <p className="text-slate-500 font-sans text-[10px] mt-0.5">Formatted publication date string</p>
+                <p className="text-slate-500 font-sans text-[10px] mt-0.5">Publication date string</p>
               </div>
             </div>
           </div>

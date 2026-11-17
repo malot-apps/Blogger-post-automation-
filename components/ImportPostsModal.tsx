@@ -709,7 +709,7 @@ export function ImportPostsModal({
                   title: activeTitle,
                   articleHtml: activeArticleHtml,
                   imageUrl: primaryImage,
-                  thumbnailUrl: previewingPost.thumbnailUrl || primaryImage,
+                  thumbnailUrl: primaryImage,
                   firstImageAlt: firstDetail?.alt,
                   firstImageSrcset: firstDetail?.srcset,
                   publishedDate: previewingPost.published

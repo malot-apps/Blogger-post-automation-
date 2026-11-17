@@ -9,8 +9,6 @@ import {
   RefreshCw,
   Link as LinkIcon,
   Check,
-  Layers,
-  Sparkles,
   AlertCircle,
   Film,
 } from 'lucide-react';
@@ -22,15 +20,10 @@ import {
 import { AiContentAssistant } from './AiContentAssistant';
 
 interface ImageUploaderProps {
-  // Main Image
+  // Main Image (also used as Blogger Post Thumbnail & Video Player Image)
   mainImageResult: ImageProcessingResult | null;
   mainImageUrlOverride: string | null;
   onMainImageSelected: (result: ImageProcessingResult | null, urlOverride?: string | null) => void;
-
-  // Thumbnail Image
-  thumbnailResult: ImageProcessingResult | null;
-  thumbnailUrlOverride: string | null;
-  onThumbnailSelected: (result: ImageProcessingResult | null, urlOverride?: string | null) => void;
 
   isProcessing: boolean;
   setIsProcessing: (loading: boolean) => void;
@@ -44,9 +37,6 @@ export function ImageUploader({
   mainImageResult,
   mainImageUrlOverride,
   onMainImageSelected,
-  thumbnailResult,
-  thumbnailUrlOverride,
-  onThumbnailSelected,
   isProcessing,
   setIsProcessing,
   onApplyTitle,
@@ -55,18 +45,12 @@ export function ImageUploader({
   const [showMainUrlInput, setShowMainUrlInput] = useState(false);
   const [mainUrlInputValue, setMainUrlInputValue] = useState('');
 
-  const [useSeparateThumbnail, setUseSeparateThumbnail] = useState(false);
-  const [showThumbUrlInput, setShowThumbUrlInput] = useState(false);
-  const [thumbUrlInputValue, setThumbUrlInputValue] = useState('');
-
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const mainFileInputRef = useRef<HTMLInputElement>(null);
   const mainCameraInputRef = useRef<HTMLInputElement>(null);
-  const thumbFileInputRef = useRef<HTMLInputElement>(null);
-  const thumbCameraInputRef = useRef<HTMLInputElement>(null);
 
-  const handleProcessFile = async (file: File, isThumb = false) => {
+  const handleProcessFile = async (file: File) => {
     if (!file) return;
     setErrorMessage(null);
     setIsProcessing(true);
@@ -77,11 +61,7 @@ export function ImageUploader({
         maxHeight: 1200,
         quality: 0.82,
       });
-      if (isThumb) {
-        onThumbnailSelected(processed, null);
-      } else {
-        onMainImageSelected(processed, null);
-      }
+      onMainImageSelected(processed, null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to process image';
       setErrorMessage(msg);
@@ -120,39 +100,7 @@ export function ImageUploader({
     }
   };
 
-  const handleApplyThumbUrl = async () => {
-    const trimmed = thumbUrlInputValue.trim();
-    if (!trimmed || !trimmed.startsWith('https://')) {
-      setErrorMessage('Security requirement: Please enter a secure HTTPS thumbnail URL (http:// and local URLs are prohibited).');
-      return;
-    }
-    setErrorMessage(null);
-    setIsProcessing(true);
-
-    try {
-      // Server-side verification for reachability, HTTPS, and image MIME type
-      const res = await fetch('/api/images/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ verifyUrl: trimmed }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success || !data.verified) {
-        throw new Error(data.error || 'Server-side verification failed: Thumbnail is not publicly accessible.');
-      }
-      onThumbnailSelected(null, data.imageUrl || trimmed);
-      setShowThumbUrlInput(false);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Thumbnail verification failed';
-      setErrorMessage(msg);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const activeMainSrc = mainImageUrlOverride || mainImageResult?.dataUrl;
-  const activeThumbSrc = thumbnailUrlOverride || thumbnailResult?.dataUrl;
-  const effectiveThumbSrc = activeThumbSrc || activeMainSrc;
 
   return (
     <div className="space-y-3.5">
@@ -161,7 +109,7 @@ export function ImageUploader({
         type="file"
         ref={mainFileInputRef}
         onChange={(e) => {
-          if (e.target.files?.[0]) handleProcessFile(e.target.files[0], false);
+          if (e.target.files?.[0]) handleProcessFile(e.target.files[0]);
           e.target.value = '';
         }}
         accept="image/*"
@@ -171,29 +119,7 @@ export function ImageUploader({
         type="file"
         ref={mainCameraInputRef}
         onChange={(e) => {
-          if (e.target.files?.[0]) handleProcessFile(e.target.files[0], false);
-          e.target.value = '';
-        }}
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-      />
-
-      <input
-        type="file"
-        ref={thumbFileInputRef}
-        onChange={(e) => {
-          if (e.target.files?.[0]) handleProcessFile(e.target.files[0], true);
-          e.target.value = '';
-        }}
-        accept="image/*"
-        className="hidden"
-      />
-      <input
-        type="file"
-        ref={thumbCameraInputRef}
-        onChange={(e) => {
-          if (e.target.files?.[0]) handleProcessFile(e.target.files[0], true);
+          if (e.target.files?.[0]) handleProcessFile(e.target.files[0]);
           e.target.value = '';
         }}
         accept="image/*"
@@ -344,144 +270,45 @@ export function ImageUploader({
         )}
       </div>
 
-      {/* AI Assistant Section (SEO Title & 1200x675 Thumbnail Generator) */}
+      {/* AI Assistant Section (SEO Title & Optional 16:9 Image Generator) */}
       <AiContentAssistant
         mainImageSrc={activeMainSrc || null}
         onSelectMainImageTrigger={() => mainFileInputRef.current?.click()}
         onApplyTitle={(newTitle) => onApplyTitle?.(newTitle)}
-        onApplyThumbnail={(thumbDataUrl) => {
-          setUseSeparateThumbnail(true);
-          onThumbnailSelected(null, thumbDataUrl);
+        onApplyAsMainImage={(dataUrl) => {
+          onMainImageSelected(null, dataUrl);
         }}
         currentTitle={currentTitle || ''}
-        currentThumbnailSrc={thumbnailUrlOverride || thumbnailResult?.dataUrl || null}
       />
 
-      {/* 2. Separate Video Thumbnail / Cover (Optional) */}
+      {/* 2. Blogger Post Thumbnail Indicator (Always uses {{IMAGE_URL}}) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-1.5">
             <Film className="w-4 h-4 text-orange-600" />
             <span className="text-xs font-bold text-slate-800">
-              Video Player Thumbnail
+              Blogger Post Thumbnail
             </span>
           </div>
-          <span className="text-[11px] font-mono text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-            &#123;&#123;THUMBNAIL_URL&#125;&#125;
+          <span className="text-[11px] font-mono text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">
+            &#123;&#123;IMAGE_URL&#125;&#125;
           </span>
         </div>
 
-        {!useSeparateThumbnail && !activeThumbSrc ? (
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
-            <div className="text-xs text-slate-600">
-              <span className="font-semibold text-slate-800">Auto-using Main Image</span>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Default: thumbnail uses the same photo as the main image
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setUseSeparateThumbnail(true)}
-              className="text-xs bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-semibold px-3 py-1.5 rounded-lg shadow-2xs transition-colors shrink-0 ml-2"
-            >
-              + Use Custom Thumbnail
-            </button>
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+          <div className="text-xs text-slate-600">
+            <span className="font-semibold text-slate-800">Auto-using Main Post Image</span>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              Main Post Image (&#123;&#123;IMAGE_URL&#125;&#125;) is automatically placed first and used as the Blogger post thumbnail.
+            </p>
           </div>
-        ) : (
-          <div className="space-y-2">
-            {activeThumbSrc ? (
-              <div className="relative bg-slate-900 rounded-xl overflow-hidden border border-slate-200 shadow-xs">
-                <div className="relative h-28 w-full bg-slate-950 flex items-center justify-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={activeThumbSrc}
-                    alt="Custom Thumbnail"
-                    className="max-h-full max-w-full object-contain mx-auto"
-                  />
-                  <div className="absolute top-2 right-2 flex items-center space-x-1.5">
-                    <button
-                      type="button"
-                      onClick={() => thumbFileInputRef.current?.click()}
-                      className="bg-black/60 text-white text-[11px] px-2.5 py-1 rounded-full flex items-center space-x-1"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                      <span>Change</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onThumbnailSelected(null, null);
-                        setUseSeparateThumbnail(false);
-                      }}
-                      className="bg-black/60 text-white p-1 rounded-full hover:bg-red-600"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="border border-dashed border-purple-300 bg-purple-50/40 rounded-xl p-3 text-center">
-                <p className="text-xs font-bold text-slate-800 mb-2">
-                  Select Custom Thumbnail Image
-                </p>
-                <div className="flex items-center justify-center space-x-2 mb-2">
-                  <button
-                    type="button"
-                    onClick={() => thumbFileInputRef.current?.click()}
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold py-1.5 px-3 rounded-lg shadow-2xs"
-                  >
-                    Upload Thumbnail
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => thumbCameraInputRef.current?.click()}
-                    className="bg-white border border-slate-300 text-slate-700 text-xs font-semibold py-1.5 px-3 rounded-lg"
-                  >
-                    Camera
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUseSeparateThumbnail(false);
-                      onThumbnailSelected(null, null);
-                    }}
-                    className="text-xs text-slate-500 hover:text-slate-800 py-1.5 px-2"
-                  >
-                    Cancel
-                  </button>
-                </div>
-
-                {!showThumbUrlInput ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowThumbUrlInput(true)}
-                    className="text-[10px] text-purple-700 underline"
-                  >
-                    or paste thumbnail URL
-                  </button>
-                ) : (
-                  <div className="max-w-xs mx-auto flex items-center space-x-1 mt-1.5">
-                    <input
-                      type="url"
-                      placeholder="https://example.com/thumb.jpg"
-                      value={thumbUrlInputValue}
-                      onChange={(e) => setThumbUrlInputValue(e.target.value)}
-                      className="flex-1 text-[11px] border border-slate-200 rounded p-1"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleApplyThumbUrl}
-                      className="bg-purple-600 text-white p-1 rounded"
-                    >
-                      <Check className="w-3 h-3" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+          {activeMainSrc && (
+            <span className="text-[11px] bg-emerald-50 border border-emerald-200 text-emerald-700 font-semibold px-2.5 py-1 rounded-lg shrink-0 ml-2 flex items-center gap-1">
+              <Check className="w-3 h-3 text-emerald-600" />
+              <span>Synced</span>
+            </span>
+          )}
+        </div>
       </div>
 
       {errorMessage && (

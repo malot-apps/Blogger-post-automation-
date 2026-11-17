@@ -160,6 +160,8 @@ fun BloggerApp(viewModel: BloggerViewModel) {
                                 val bitmap = uiState.mainImage?.uri?.let { ImageOptimizer.decodeSampledBitmapFromUri(context, it) }
                                 viewModel.regenerateThumbnail(context, bitmap)
                             },
+                            isMainImageUsingAiThumb = uiState.thumbnailImage != null && uiState.mainImageUrlOverride == null && uiState.mainImage?.uri == uiState.thumbnailImage?.uri,
+                            onApplyAiThumbnailAsMain = { viewModel.applyAiThumbnailAsMain() },
                             aiError = uiState.aiError
                         )
 
@@ -193,7 +195,7 @@ fun BloggerApp(viewModel: BloggerViewModel) {
             onClose = { viewModel.closePreview() },
             title = uiState.title,
             imageUrl = uiState.mainImageUrlOverride ?: uiState.mainImage?.uri?.toString() ?: "",
-            thumbnailUrl = uiState.thumbnailUrlOverride ?: uiState.thumbnailImage?.uri?.toString(),
+            thumbnailUrl = uiState.mainImageUrlOverride ?: uiState.mainImage?.uri?.toString(),
             caption = uiState.caption,
             template = uiState.customTemplate,
             onPublishNow = { viewModel.publishPost() },
