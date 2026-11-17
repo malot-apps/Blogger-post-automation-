@@ -7,6 +7,10 @@ import {
   renderImportedPostTemplate,
   type ImportedTemplateVariables,
 } from '../templates/BloggerPostTemplate';
+import {
+  isPngImageUrl,
+  selectMainThumbnailImageFromHtml,
+} from '../lib/mainImageSelector';
 
 export interface TemplateVariables {
   title: string;
@@ -49,7 +53,13 @@ export function renderTemplate(
 
   const escapedTitle = escapeHtml(variables.title || '');
   const escapedCaption = escapeHtml(variables.caption || '');
-  const safeImageUrl = (variables.imageUrl || '').trim().replace(/["'<>]/g, '');
+  let safeImageUrl = (variables.imageUrl || '').trim().replace(/["'<>]/g, '');
+  if (!safeImageUrl || isPngImageUrl(safeImageUrl)) {
+    const recoveredFromTemplate = selectMainThumbnailImageFromHtml(rawTemplate);
+    if (recoveredFromTemplate && !isPngImageUrl(recoveredFromTemplate)) {
+      safeImageUrl = recoveredFromTemplate.trim().replace(/["'<>]/g, '');
+    }
+  }
 
   const formattedDate = variables.publishedDate || new Date().toLocaleString('en-US', {
     dateStyle: 'medium',

@@ -5,6 +5,8 @@ export interface SanitizedArticleImage {
   src: string;
   srcset?: string;
   alt: string;
+  width?: number;
+  height?: number;
 }
 
 export interface SanitizeImportedHtmlResult {
@@ -801,12 +803,17 @@ export function sanitizeImportedHtml(
       $img.attr('height', String(Math.round(attrHeight)));
     }
 
+    const origWidth = parseNumericAttr($img.attr('data-original-width'));
+    const origHeight = parseNumericAttr($img.attr('data-original-height'));
+
     if (!seenImageUrls.has(resolvedSrc)) {
       seenImageUrls.add(resolvedSrc);
       collectedImages.push({
         src: resolvedSrc,
         srcset: normalizedSrcset,
         alt: altText,
+        width: attrWidth ?? origWidth ?? styleInfo.width,
+        height: attrHeight ?? origHeight ?? styleInfo.height,
       });
     }
   });

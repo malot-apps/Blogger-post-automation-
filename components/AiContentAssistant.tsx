@@ -80,6 +80,30 @@ export function AiContentAssistant({
     aiThumbnailResult && mainImageSrc === aiThumbnailResult.dataUrl
   );
 
+  const convertDataUrlToJpeg = async (dataUrl: string): Promise<string> => {
+    if (!dataUrl.startsWith('data:image/') || dataUrl.startsWith('data:image/jpeg')) {
+      return dataUrl;
+    }
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width || 1200;
+          canvas.height = img.naturalHeight || img.height || 675;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(dataUrl);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.92));
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
   /**
    * Main AI Generation: Understands image -> Generates SEO title + 1200x675 thumbnail
    */
@@ -515,8 +539,10 @@ export function AiContentAssistant({
               <div className="flex items-center justify-between pt-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    onApplyAsMainImage(aiThumbnailResult.dataUrl);
+                  onClick={async () => {
+                    const jpegUrl = await convertDataUrlToJpeg(aiThumbnailResult.dataUrl);
+                    setAiThumbnailResult((prev) => (prev ? { ...prev, dataUrl: jpegUrl } : prev));
+                    onApplyAsMainImage(jpegUrl);
                   }}
                   className={`text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-colors cursor-pointer ${
                     isMainImageApplied

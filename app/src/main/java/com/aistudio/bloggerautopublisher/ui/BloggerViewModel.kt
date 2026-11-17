@@ -11,6 +11,8 @@ import com.aistudio.bloggerautopublisher.model.PublishedPost
 import com.aistudio.bloggerautopublisher.repository.BloggerRepository
 import com.aistudio.bloggerautopublisher.template.BloggerTemplateEngine
 import com.aistudio.bloggerautopublisher.util.ImageOptimizer
+import com.aistudio.bloggerautopublisher.util.MainImageSelector
+import com.aistudio.bloggerautopublisher.util.ThumbnailCandidate
 import com.aistudio.bloggerautopublisher.util.TitleGenerator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -412,9 +414,14 @@ class BloggerViewModel(
             TitleGenerator.generateTitleFromCaption(state.caption)
         }
 
-        val effectiveImageUrl = state.mainImageUrlOverride
+        val rawMainUrl = state.mainImageUrlOverride
             ?: state.mainImage?.uri?.toString()
             ?: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=1200&q=80"
+
+        val effectiveImageUrl = MainImageSelector.selectMainThumbnailImage(
+            listOf(ThumbnailCandidate(src = rawMainUrl))
+        ) ?: MainImageSelector.selectMainThumbnailImageFromHtml(state.customTemplate)
+            ?: rawMainUrl
 
         val effectiveThumbUrl = effectiveImageUrl
 

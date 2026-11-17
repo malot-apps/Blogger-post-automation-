@@ -21,6 +21,7 @@ import {
 import type { ImportedPostItem } from '@/src/server/bloggerService';
 import { getAccessToken } from '@/src/lib/firebase';
 import { renderImportedPostTemplate } from '@/src/templates/BloggerPostTemplate';
+import { selectMainThumbnailImage, isPngImageUrl } from '@/src/lib/mainImageSelector';
 
 interface ImportPostsModalProps {
   isOpen: boolean;
@@ -144,6 +145,11 @@ export function ImportPostsModal({
         ? new Date(post.published).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
         : undefined;
 
+      const safePrimaryImg =
+        selectMainThumbnailImage(post.imageDetails || post.images) ||
+        (!isPngImageUrl(post.thumbnailUrl) ? post.thumbnailUrl : undefined) ||
+        undefined;
+
       const res = await fetch('/api/blogger/publish', {
         method: 'POST',
         headers: {
@@ -154,7 +160,8 @@ export function ImportPostsModal({
           blogId: targetBlogId,
           title: postTitle,
           contentHtml: postHtml,
-          thumbnailUrl: post.thumbnailUrl,
+          imageUrl: safePrimaryImg,
+          thumbnailUrl: safePrimaryImg,
           sourceUrl: post.url || blogMeta?.url,
           labels: post.labels.join(', '),
           customTemplate: templateString,
@@ -211,6 +218,11 @@ export function ImportPostsModal({
             ? new Date(post.published).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
             : undefined;
 
+          const safePrimaryImg =
+            selectMainThumbnailImage(post.imageDetails || post.images) ||
+            (!isPngImageUrl(post.thumbnailUrl) ? post.thumbnailUrl : undefined) ||
+            undefined;
+
           const res = await fetch('/api/blogger/publish', {
             method: 'POST',
             headers: {
@@ -221,7 +233,8 @@ export function ImportPostsModal({
               blogId: targetBlogId,
               title: post.title,
               contentHtml: post.content,
-              thumbnailUrl: post.thumbnailUrl,
+              imageUrl: safePrimaryImg,
+              thumbnailUrl: safePrimaryImg,
               sourceUrl: post.url || blogMeta?.url,
               labels: post.labels.join(', '),
               customTemplate: templateString,
@@ -463,19 +476,24 @@ export function ImportPostsModal({
                       />
 
                       {/* Thumbnail */}
-                      {post.thumbnailUrl ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={post.thumbnailUrl}
-                          alt={post.title}
-                          referrerPolicy="no-referrer"
-                          className="w-16 h-12 object-cover rounded-lg bg-slate-100 shrink-0 border border-slate-200"
-                        />
-                      ) : (
-                        <div className="w-16 h-12 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 text-[10px]">
-                          No Img
-                        </div>
-                      )}
+                      {(() => {
+                        const displayThumb =
+                          selectMainThumbnailImage(post.imageDetails || post.images) ||
+                          (!isPngImageUrl(post.thumbnailUrl) ? post.thumbnailUrl : undefined);
+                        return displayThumb ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={displayThumb}
+                            alt={post.title}
+                            referrerPolicy="no-referrer"
+                            className="w-16 h-12 object-cover rounded-lg bg-slate-100 shrink-0 border border-slate-200"
+                          />
+                        ) : (
+                          <div className="w-16 h-12 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 text-[10px]">
+                            No Img
+                          </div>
+                        );
+                      })()}
 
                       <div className="min-w-0 flex-1 space-y-1">
                         <h4 className="text-xs font-bold text-slate-900 truncate">
@@ -703,15 +721,20 @@ export function ImportPostsModal({
               {(() => {
                 const activeTitle = aiEnhancedTitle || previewingPost.title;
                 const activeArticleHtml = aiEnhancedContent || previewingPost.content;
-                const firstDetail = previewingPost.imageDetails?.[0];
-                const primaryImage = firstDetail?.src || previewingPost.images[0] || previewingPost.thumbnailUrl || '';
+                const primaryImage =
+                  selectMainThumbnailImage(previewingPost.imageDetails || previewingPost.images) ||
+                  (!isPngImageUrl(previewingPost.thumbnailUrl) ? previewingPost.thumbnailUrl : '') ||
+                  '';
+                const selectedDetail =
+                  previewingPost.imageDetails?.find((d) => d.src === primaryImage) ||
+                  previewingPost.imageDetails?.[0];
                 const templatedPreviewHtml = renderImportedPostTemplate(templateString, {
                   title: activeTitle,
                   articleHtml: activeArticleHtml,
                   imageUrl: primaryImage,
                   thumbnailUrl: primaryImage,
-                  firstImageAlt: firstDetail?.alt,
-                  firstImageSrcset: firstDetail?.srcset,
+                  firstImageAlt: selectedDetail?.alt,
+                  firstImageSrcset: selectedDetail?.srcset,
                   publishedDate: previewingPost.published
                     ? new Date(previewingPost.published).toLocaleString('en-US', {
                         dateStyle: 'medium',

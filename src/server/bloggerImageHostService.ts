@@ -1,4 +1,5 @@
 import { verifyPublicImageUrl, ImageVerificationResult } from './imageVerificationService';
+import { selectMainThumbnailImage } from '../lib/mainImageSelector';
 
 /**
  * ARCHITECTURAL COMMENT #1:
@@ -278,8 +279,8 @@ export async function uploadAndVerifyImageOnBloggerHost({
     };
   }
 
-  // Select primary Blogger-generated CDN URL
-  const candidateUrl = extractedUrls[0];
+  // Select primary Blogger-generated CDN URL (preferring JPG/JPEG and ignoring PNGs/ads)
+  const candidateUrl = selectMainThumbnailImage(extractedUrls) || extractedUrls[0];
 
   // 7. Verify the Blogger-generated URL server-side (SSRF, HTTPS, 2xx, image/*)
   const verification: ImageVerificationResult = await verifyPublicImageUrl(candidateUrl, {

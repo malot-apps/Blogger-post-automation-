@@ -3,6 +3,8 @@ package com.aistudio.bloggerautopublisher.api
 import com.aistudio.bloggerautopublisher.model.BloggerBlog
 import com.aistudio.bloggerautopublisher.model.PublishedPost
 import com.aistudio.bloggerautopublisher.model.UserProfile
+import com.aistudio.bloggerautopublisher.util.MainImageSelector
+import com.aistudio.bloggerautopublisher.util.ThumbnailCandidate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -158,14 +160,22 @@ object BloggerApiService {
                     }
                 }
 
+                val resolvedMainImageUrl = MainImageSelector.selectMainThumbnailImage(
+                    listOfNotNull(
+                        imageUrl?.takeIf { it.isNotBlank() }?.let { ThumbnailCandidate(src = it) },
+                        thumbnailUrl?.takeIf { it.isNotBlank() }?.let { ThumbnailCandidate(src = it) }
+                    )
+                ) ?: MainImageSelector.selectMainThumbnailImageFromHtml(content)
+                    ?: imageUrl?.takeUnless { MainImageSelector.isPngImageUrl(it) }
+
                 PublishedPost(
                     id = json.getString("id"),
                     blogId = blogId,
                     title = json.optString("title", title),
                     caption = caption,
                     url = json.optString("url", "https://blogger.com"),
-                    thumbnailUrl = thumbnailUrl,
-                    imageUrl = imageUrl,
+                    thumbnailUrl = resolvedMainImageUrl,
+                    imageUrl = resolvedMainImageUrl,
                     labels = if (labelsList.isNotEmpty()) labelsList.joinToString(", ") else null,
                     publishedAt = now
                 )

@@ -65,8 +65,8 @@ export async function processAndCompressImage(
         // Draw image onto canvas
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Determine best output format (prefer image/jpeg for photos, image/png for transparent/graphics)
-        const outputMime = file.type === 'image/png' ? 'image/jpeg' : file.type;
+        // Encode all uploaded raster photos as JPEG so Blogger thumbnails always receive crisp JPG/JPEG images
+        const outputMime = 'image/jpeg';
         const compressedDataUrl = canvas.toDataURL(outputMime, quality);
 
         // Calculate compressed size in bytes from dataUrl length

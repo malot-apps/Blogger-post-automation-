@@ -6,9 +6,18 @@ import {
 } from './bloggerImageHostService';
 import { normalizeImageUrl, normalizeSrcset } from './importedHtmlSanitizer';
 
+export interface ResolvedArticleImage {
+  src: string;
+  srcset?: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface ImportedImageResolutionResult {
   html: string;
   verifiedUrls: string[];
+  imageDetails: ResolvedArticleImage[];
   warnings: string[];
 }
 
@@ -133,7 +142,7 @@ export async function resolveAndVerifyImportedArticleImages(
   } = {}
 ): Promise<ImportedImageResolutionResult> {
   if (!sanitizedHtml || !sanitizedHtml.includes('<img')) {
-    return { html: sanitizedHtml, verifiedUrls: [], warnings: [] };
+    return { html: sanitizedHtml, verifiedUrls: [], imageDetails: [], warnings: [] };
   }
 
   const hostConfig = getBloggerImageHostConfig();
@@ -144,17 +153,23 @@ export async function resolveAndVerifyImportedArticleImages(
   const imgElements = $root.find('img').toArray();
 
   const verifiedUrls: string[] = [];
+  const imageDetails: ResolvedArticleImage[] = [];
   const warnings: string[] = [];
+  const orderedBatchResults: Array<ResolvedArticleImage | null> = new Array(imgElements.length).fill(null);
 
-  // Process images in bounded batches to avoid overwhelming network or timing out
+  // Process images in bounded batches while preserving exact DOM order in output arrays
   const BATCH_SIZE = 5;
   for (let i = 0; i < imgElements.length; i += BATCH_SIZE) {
     const batch = imgElements.slice(i, i + BATCH_SIZE);
     await Promise.all(
-      batch.map(async (imgEl) => {
+      batch.map(async (imgEl, batchOffset) => {
+        const domIndex = i + batchOffset;
         const $img = $(imgEl);
         const rawSrc = $img.attr('src') || '';
         const rawSrcset = $img.attr('srcset');
+        const alt = ($img.attr('alt') || '').trim();
+        const attrW = parseInt($img.attr('width') || '', 10);
+        const attrH = parseInt($img.attr('height') || '', 10);
 
         const primaryRes = rawSrc
           ? await resolveSingleImageUrl(rawSrc, {
@@ -226,16 +241,28 @@ export async function resolveAndVerifyImportedArticleImages(
           $img.removeAttr('srcset');
         }
 
-        if (!verifiedUrls.includes(finalSrc)) {
-          verifiedUrls.push(finalSrc);
-        }
+        orderedBatchResults[domIndex] = {
+          src: finalSrc,
+          srcset: finalSrcset,
+          alt,
+          width: Number.isFinite(attrW) ? attrW : undefined,
+          height: Number.isFinite(attrH) ? attrH : undefined,
+        };
       })
     );
+  }
+
+  for (const item of orderedBatchResults) {
+    if (item && !verifiedUrls.includes(item.src)) {
+      verifiedUrls.push(item.src);
+      imageDetails.push(item);
+    }
   }
 
   return {
     html: ($root.html() || '').trim(),
     verifiedUrls,
+    imageDetails,
     warnings,
   };
 }

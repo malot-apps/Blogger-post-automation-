@@ -220,6 +220,7 @@ import {
   sanitizeImportedHtml,
   type SanitizedArticleImage,
 } from './importedHtmlSanitizer';
+import { selectMainThumbnailImage } from '../lib/mainImageSelector';
 
 export interface ImportedPostItem {
   id: string;
@@ -344,6 +345,7 @@ export async function importBloggerPostsFromSource({
               baseUrl: item.url || resolvedBlogUrl,
             });
             const images = sanitized.images.map((img) => img.src);
+            const selectedThumb = selectMainThumbnailImage(sanitized.images) || undefined;
 
             return {
               id: item.id,
@@ -357,7 +359,7 @@ export async function importBloggerPostsFromSource({
               labels: item.labels || [],
               images,
               imageDetails: sanitized.images,
-              thumbnailUrl: images[0] || undefined,
+              thumbnailUrl: selectedThumb,
               authorName: item.author?.displayName,
             };
           });
@@ -449,12 +451,18 @@ export async function importBloggerPostsFromSource({
       const images = sanitized.images.map((img) => img.src);
 
       let fallbackThumb: string | undefined;
-      if (!images[0] && entry.media$thumbnail?.url) {
+      if (entry.media$thumbnail?.url) {
         const normalizedThumb = normalizeImageUrl(entry.media$thumbnail.url, altLink);
         if (normalizedThumb) {
           fallbackThumb = normalizedThumb.replace(/\/s72(-c)?(-k-no)?\//i, '/s1600/');
         }
       }
+
+      const selectedThumb =
+        selectMainThumbnailImage([
+          ...sanitized.images,
+          ...(fallbackThumb ? [{ src: fallbackThumb, index: sanitized.images.length }] : []),
+        ]) || undefined;
 
       const labels = (entry.category || []).map((c) => c.term || '').filter(Boolean);
       const entryId = entry.id?.$t?.split('.post-')[1] || entry.id?.$t || `post_${index}_${Date.now()}`;
@@ -470,7 +478,7 @@ export async function importBloggerPostsFromSource({
         labels,
         images,
         imageDetails: sanitized.images,
-        thumbnailUrl: images[0] || fallbackThumb,
+        thumbnailUrl: selectedThumb,
         authorName: entry.author?.[0]?.name?.$t,
       };
     });

@@ -6,6 +6,7 @@ import { verifyImage } from '@/src/server/imageVerificationService';
 import { uploadAndVerifyImageOnBloggerHost } from '@/src/server/bloggerImageHostService';
 import { sanitizeImportedHtml, decodeHtmlEntities } from '@/src/server/importedHtmlSanitizer';
 import { resolveAndVerifyImportedArticleImages } from '@/src/server/importedImageResolver';
+import { selectMainThumbnailImage, isPngImageUrl } from '@/src/lib/mainImageSelector';
 
 /**
  * ARCHITECTURAL COMMENT #1:
@@ -153,30 +154,36 @@ export async function POST(req: NextRequest) {
           : '';
       const finalImportedTitle = rawTitle || generateTitleFromCaption(sanitized.plainText || 'Imported Post');
 
-      let primaryImg = resolved.verifiedUrls[0] || '';
+      let primaryImg = selectMainThumbnailImage(resolved.imageDetails) || '';
 
-      const fallbackImgCandidate =
+      const rawFallbackCandidate =
         (typeof imageUrl === 'string' && imageUrl.trim().length > 0 ? imageUrl.trim() : '') ||
         (typeof thumbnailUrl === 'string' && thumbnailUrl.trim().length > 0 ? thumbnailUrl.trim() : '');
+      const fallbackImgCandidate =
+        rawFallbackCandidate && !isPngImageUrl(rawFallbackCandidate)
+          ? selectMainThumbnailImage([rawFallbackCandidate]) || ''
+          : '';
 
       if (!primaryImg && fallbackImgCandidate) {
         const httpsCandidate = fallbackImgCandidate.startsWith('http://')
           ? `https://${fallbackImgCandidate.slice(7)}`
           : fallbackImgCandidate;
         const thumbCheck = await verifyImage(httpsCandidate);
-        if (thumbCheck.isValid && thumbCheck.verifiedUrl) {
+        if (thumbCheck.isValid && thumbCheck.verifiedUrl && !isPngImageUrl(thumbCheck.verifiedUrl)) {
           primaryImg = thumbCheck.verifiedUrl;
         }
       }
 
-      const firstImgMeta = sanitized.images[0];
+      const selectedImgMeta =
+        resolved.imageDetails.find((img) => img.src === primaryImg) ||
+        sanitized.images.find((img) => img.src === primaryImg);
       const templatedPostHtml = renderImportedTemplate(customTemplate, {
         title: finalImportedTitle,
         articleHtml: resolved.html,
         imageUrl: primaryImg,
         thumbnailUrl: primaryImg,
-        firstImageAlt: firstImgMeta?.alt,
-        firstImageSrcset: firstImgMeta?.srcset,
+        firstImageAlt: selectedImgMeta?.alt,
+        firstImageSrcset: selectedImgMeta?.srcset,
         publishedDate:
           typeof body.publishedDate === 'string' && body.publishedDate.trim().length > 0
             ? body.publishedDate.trim()

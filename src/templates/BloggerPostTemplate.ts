@@ -1,4 +1,8 @@
 import { escapeHtml } from '../lib/sanitizer';
+import {
+  isPngImageUrl,
+  selectMainThumbnailImageFromHtml,
+} from '../lib/mainImageSelector';
 
 export interface BloggerTemplateVariables {
   title: string;
@@ -267,8 +271,17 @@ export function ensureMainImageFirstInPostHtml(
   mainImageUrl: string,
   altText?: string
 ): string {
-  const cleanUrl = sanitizeTemplateUrlValue(mainImageUrl);
-  if (!cleanUrl) return html;
+  let cleanUrl = sanitizeTemplateUrlValue(mainImageUrl);
+
+  // Never allow a PNG or empty image as the hero thumbnail if a valid JPG/non-PNG image exists in HTML
+  if (!cleanUrl || isPngImageUrl(cleanUrl)) {
+    const htmlCandidate = selectMainThumbnailImageFromHtml(html);
+    if (htmlCandidate && !isPngImageUrl(htmlCandidate)) {
+      cleanUrl = sanitizeTemplateUrlValue(htmlCandidate);
+    }
+  }
+
+  if (!cleanUrl || isPngImageUrl(cleanUrl)) return html;
 
   const comparableTarget = normalizeComparableUrl(cleanUrl);
   const firstImgMatch = /<img\b([^>]*)>/i.exec(html);
@@ -312,7 +325,13 @@ export function renderBloggerPostTemplate(
 
   const escapedTitle = escapeHtml(data.title || '');
   const formattedCaption = escapeHtml(data.caption || '');
-  const safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl);
+  let safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl);
+  if (!safeImageUrl || isPngImageUrl(safeImageUrl)) {
+    const recoveredFromTemplate = selectMainThumbnailImageFromHtml(safeTemplate);
+    if (recoveredFromTemplate && !isPngImageUrl(recoveredFromTemplate)) {
+      safeImageUrl = sanitizeTemplateUrlValue(recoveredFromTemplate);
+    }
+  }
 
   const formattedDate = data.publishedDate || new Date().toLocaleString('en-US', {
     dateStyle: 'medium',
@@ -414,7 +433,14 @@ export function renderImportedPostTemplate(
   if (!data) return safeTemplate;
 
   const escapedTitle = escapeHtml(data.title || '');
-  const safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl);
+  let safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl);
+  if (!safeImageUrl || isPngImageUrl(safeImageUrl)) {
+    const recoveredFromArticle = selectMainThumbnailImageFromHtml(data.articleHtml);
+    safeImageUrl =
+      recoveredFromArticle && !isPngImageUrl(recoveredFromArticle)
+        ? sanitizeTemplateUrlValue(recoveredFromArticle)
+        : '';
+  }
   const formattedDate = data.publishedDate || new Date().toLocaleString('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',

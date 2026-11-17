@@ -1,5 +1,6 @@
 package com.aistudio.bloggerautopublisher.template
 
+import com.aistudio.bloggerautopublisher.util.MainImageSelector
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -188,8 +189,14 @@ object BloggerTemplateEngine {
         mainImageUrl: String,
         altText: String? = null
     ): String {
-        val cleanUrl = sanitizeUrl(mainImageUrl)
-        if (cleanUrl.isEmpty()) return html
+        var cleanUrl = sanitizeUrl(mainImageUrl)
+        if (cleanUrl.isEmpty() || MainImageSelector.isPngImageUrl(cleanUrl)) {
+            val htmlCandidate = MainImageSelector.selectMainThumbnailImageFromHtml(html)
+            if (!htmlCandidate.isNullOrBlank() && !MainImageSelector.isPngImageUrl(htmlCandidate)) {
+                cleanUrl = sanitizeUrl(htmlCandidate)
+            }
+        }
+        if (cleanUrl.isEmpty() || MainImageSelector.isPngImageUrl(cleanUrl)) return html
 
         val comparableTarget = normalizeComparableUrl(cleanUrl)
         val firstImgRegex = Regex("<img\\b([^>]*)>", RegexOption.IGNORE_CASE)
@@ -226,7 +233,13 @@ object BloggerTemplateEngine {
         publishedDate: String? = null
     ): String {
         val safeTemplate = if (!template.isNullOrBlank()) template else DEFAULT_MASTER_TEMPLATE
-        val safeImageUrl = sanitizeUrl(imageUrl)
+        var safeImageUrl = sanitizeUrl(imageUrl)
+        if (safeImageUrl.isEmpty() || MainImageSelector.isPngImageUrl(safeImageUrl)) {
+            val recoveredFromTemplate = MainImageSelector.selectMainThumbnailImageFromHtml(safeTemplate)
+            if (!recoveredFromTemplate.isNullOrBlank() && !MainImageSelector.isPngImageUrl(recoveredFromTemplate)) {
+                safeImageUrl = sanitizeUrl(recoveredFromTemplate)
+            }
+        }
         val formattedDate = publishedDate ?: SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.US).format(Date())
 
         val escapedTitle = escapeHtml(title)
