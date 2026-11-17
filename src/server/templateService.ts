@@ -15,6 +15,7 @@ import {
   deduplicateAdScriptsAndContainers,
   ensureMasterAdConfiguration,
 } from '../lib/importedHtmlCleaner';
+import { isLegacyDefaultTemplate, type AdsSettings } from '../lib/adsSettings';
 
 export interface TemplateVariables {
   title: string;
@@ -40,24 +41,26 @@ export function loadMasterTemplate(): string {
 }
 
 /**
- * Injects all dynamic variables into the master HTML template before Blogger publishing:
+ * Injects all dynamic variables and active Ads Settings into the master HTML template before Blogger publishing:
  * - {{TITLE}}
  * - {{IMAGE_URL}} (always used as the Blogger post thumbnail & first image)
  * - {{CAPTION}}
  * - {{PUBLISHED_DATE}}
- * Note: Any legacy {{THUMBNAIL_URL}} placeholder in saved templates resolves directly to {{IMAGE_URL}}.
  */
 export function renderTemplate(
   templateString: string | undefined | null,
-  variables: TemplateVariables
+  variables: TemplateVariables,
+  adsSettings?: AdsSettings | null
 ): string {
   const masterTemplate = loadMasterTemplate();
-  const rawTemplate = templateString && templateString.trim().length > 0
-    ? deduplicateAdScriptsAndContainers(templateString)
-    : masterTemplate;
+  const trimmed = templateString?.trim();
+  const rawTemplate =
+    trimmed && !isLegacyDefaultTemplate(trimmed)
+      ? deduplicateAdScriptsAndContainers(trimmed)
+      : masterTemplate;
 
   const escapedTitle = escapeHtml(variables.title || '');
-  const escapedCaption = escapeHtml(variables.caption || '');
+  const escapedCaption = escapeHtml(variables.caption || '').replace(/\n/g, '<br/>');
   let safeImageUrl = (variables.imageUrl || '').trim().replace(/["'<>]/g, '');
   if (!safeImageUrl || isPngImageUrl(safeImageUrl)) {
     const recoveredFromTemplate = selectMainThumbnailImageFromHtml(rawTemplate);
@@ -66,10 +69,12 @@ export function renderTemplate(
     }
   }
 
-  const formattedDate = variables.publishedDate || new Date().toLocaleString('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  const formattedDate =
+    variables.publishedDate ||
+    new Date().toLocaleString('en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
 
   const rendered = rawTemplate
     .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
@@ -78,22 +83,26 @@ export function renderTemplate(
     .replace(/\{\{CAPTION\}\}/g, () => escapedCaption)
     .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
 
-  const secured = ensureMasterAdConfiguration(rendered, masterTemplate);
+  const secured = ensureMasterAdConfiguration(rendered, masterTemplate, adsSettings);
   return ensureMainImageFirstInPostHtml(secured, safeImageUrl, variables.title);
 }
 
 /**
  * Renders a sanitized imported article into the existing Master HTML Template
  * (/templates/blogger-post-template.html or the user's saved custom template),
- * automatically injecting the Master Template's configured ad links and preventing duplicate ad scripts/containers.
+ * applying only enabled Ads Settings and preventing duplicate ad scripts/containers.
  */
 export function renderImportedTemplate(
   templateString: string | undefined | null,
-  variables: ImportedTemplateVariables
+  variables: ImportedTemplateVariables,
+  adsSettings?: AdsSettings | null
 ): string {
   const masterTemplate = loadMasterTemplate();
   const trimmedCustom = templateString?.trim();
-  const normalizedCustom = trimmedCustom ? deduplicateAdScriptsAndContainers(trimmedCustom) : '';
+  const normalizedCustom =
+    trimmedCustom && !isLegacyDefaultTemplate(trimmedCustom)
+      ? deduplicateAdScriptsAndContainers(trimmedCustom)
+      : '';
   const effectiveTemplate =
     normalizedCustom &&
     normalizedCustom !== DEFAULT_MASTER_TEMPLATE.trim() &&
@@ -101,5 +110,5 @@ export function renderImportedTemplate(
       ? normalizedCustom
       : masterTemplate;
 
-  return renderImportedPostTemplate(effectiveTemplate, variables, masterTemplate);
+  return renderImportedPostTemplate(effectiveTemplate, variables, masterTemplate, adsSettings);
 }

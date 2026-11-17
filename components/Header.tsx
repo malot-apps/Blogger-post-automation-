@@ -103,7 +103,7 @@ export function Header({
               type="button"
               onClick={onOpenSettings}
               className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Settings (Templates & Gemini Key)"
+              title="Settings (Templates, Ads & Gemini Key)"
               aria-label="Settings"
             >
               <Sliders className="w-4.5 h-4.5" />

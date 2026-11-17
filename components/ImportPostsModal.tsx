@@ -23,6 +23,7 @@ import { getAccessToken } from '@/src/lib/firebase';
 import { renderImportedPostTemplate } from '@/src/templates/BloggerPostTemplate';
 import { selectMainThumbnailImage, isPngImageUrl } from '@/src/lib/mainImageSelector';
 import { sanitizeImportedArticleFragment } from '@/src/lib/importedHtmlCleaner';
+import type { AdsSettings } from '@/src/lib/adsSettings';
 
 interface ImportPostsModalProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ interface ImportPostsModalProps {
   targetBlogId: string;
   targetBlogName?: string;
   templateString?: string;
+  adsSettings?: AdsSettings;
   onPostPublished?: () => void;
 }
 
@@ -39,6 +41,7 @@ export function ImportPostsModal({
   targetBlogId,
   targetBlogName,
   templateString,
+  adsSettings,
   onPostPublished,
 }: ImportPostsModalProps) {
   const [sourceUrl, setSourceUrl] = useState('');
@@ -166,6 +169,7 @@ export function ImportPostsModal({
           sourceUrl: post.url || blogMeta?.url,
           labels: post.labels.join(', '),
           customTemplate: templateString,
+          adsSettings,
           publishedDate: formattedPublishedDate,
           isImported: true,
         }),
@@ -239,6 +243,7 @@ export function ImportPostsModal({
               sourceUrl: post.url || blogMeta?.url,
               labels: post.labels.join(', '),
               customTemplate: templateString,
+              adsSettings,
               publishedDate: formattedPublishedDate,
               isImported: true,
             }),
@@ -733,21 +738,26 @@ export function ImportPostsModal({
                 const selectedDetail =
                   previewingPost.imageDetails?.find((d) => d.src === primaryImage) ||
                   previewingPost.imageDetails?.[0];
-                const templatedPreviewHtml = renderImportedPostTemplate(templateString, {
-                  title: activeTitle,
-                  articleHtml: activeArticleHtml,
-                  imageUrl: primaryImage,
-                  thumbnailUrl: primaryImage,
-                  firstImageAlt: selectedDetail?.alt,
-                  firstImageSrcset: selectedDetail?.srcset,
-                  sourceUrl: activeSourceUrl,
-                  publishedDate: previewingPost.published
-                    ? new Date(previewingPost.published).toLocaleString('en-US', {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      })
-                    : undefined,
-                });
+                const templatedPreviewHtml = renderImportedPostTemplate(
+                  templateString,
+                  {
+                    title: activeTitle,
+                    articleHtml: activeArticleHtml,
+                    imageUrl: primaryImage,
+                    thumbnailUrl: primaryImage,
+                    firstImageAlt: selectedDetail?.alt,
+                    firstImageSrcset: selectedDetail?.srcset,
+                    sourceUrl: activeSourceUrl,
+                    publishedDate: previewingPost.published
+                      ? new Date(previewingPost.published).toLocaleString('en-US', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })
+                      : undefined,
+                  },
+                  undefined,
+                  adsSettings
+                );
 
                 if (previewTab === 'template') {
                   return (

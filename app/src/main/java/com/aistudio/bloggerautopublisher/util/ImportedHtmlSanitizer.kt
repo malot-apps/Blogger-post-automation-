@@ -20,6 +20,11 @@ data class SanitizedImportedHtmlResult(
  */
 object ImportedHtmlSanitizer {
 
+    private val AD_BANNER_PATH_OR_HOST_REGEX = Regex(
+        "(banner|promo|sponsor|adsense|adsterra|propeller|cpmnetwork|highperformanceformat|effectivecpm|728x90|300x250|320x50|160x600|468x60|970x90|aff[_-]?banner)",
+        RegexOption.IGNORE_CASE
+    )
+
     private val TRACKING_OR_AD_HOST_REGEX = Regex(
         "(^|\\.)(doubleclick\\.net|googlesyndication\\.com|googleadservices\\.com|google-analytics\\.com|googletagmanager\\.com|googletagservices\\.com|facebook\\.com|connect\\.facebook\\.net|statcounter\\.com|histats\\.com|feedburner\\.com|quantserve\\.com|scorecardresearch\\.com|adnxs\\.com|criteo\\.(com|net)|pubmatic\\.com|rubiconproject\\.com|openx\\.net|taboola\\.com|outbrain\\.com|mgid\\.com|adsterra\\.com|effectivecpmnetwork\\.com|highperformanceformat\\.com|cheflobesofficer\\.com|profitablegatecpm\\.com|profitablecpmrate\\.com|effectiveratecpm\\.com|highcpmgate\\.com|highrevenuegate\\.com|toprevenuegate\\.com|topcreativeformat\\.com|gatetocpm\\.com|wayfarerorthodox\\.com|cpmnetwork\\.[a-z]{2,}|propellerads\\.com|onclickalgo\\.[a-z]{2,}|onclickads\\.[a-z]{2,}|popads\\.net|popcash\\.net|adcash\\.com|monetag\\.com|hilltopads\\.[a-z]{2,}|exoclick\\.com|trafficjunky\\.[a-z]{2,}|juicyads\\.com|clickadu\\.[a-z]{2,}|galaksion\\.[a-z]{2,}|admaven\\.[a-z]{2,}|evadav\\.[a-z]{2,}|richads\\.[a-z]{2,}|amazon-adsystem\\.com|assoc-amazon\\.com|media\\.net|revcontent\\.com)$",
         RegexOption.IGNORE_CASE
@@ -43,17 +48,17 @@ object ImportedHtmlSanitizer {
     )
 
     private val PROMO_CTA_TEXT_REGEX = Regex(
-        "^(buy now|shop now|check price|get deal|claim offer|download now|free download|download|play now|watch now|play\\s*&\\s*watch|watch full video|full video|watch video|click here|continue|open link|skip ad|visit link|subscribe now|join telegram|follow us|advertisement|sponsored|loading premium content\\.{0,3}|▶\\uFE0F?|ভিডিওটি চালু করুন|এখনই দেখুন|পুরো ভিডিও দেখুন|ডাউনলোড করুন|ক্লিক করুন)$",
+        "^(buy now|shop now|check price|get deal|claim offer|download now|free download|download|play now|watch now|play\\s*&\\s*watch|watch full video|full video|watch video|click here|continue|open link|skip ad|visit link|subscribe now|join telegram|follow us|advertisement|sponsored|sponsored banner|recommended partner|player sponsor|sponsored content|sponsored suggestion|loading premium content\\.{0,3}|▶\\uFE0F?|ভিডিওটি চালু করুন|এখনই দেখুন|পুরো ভিডিও দেখুন|ডাউনলোড করুন|ক্লিক করুন|নিচে Scroll করুন)$",
         RegexOption.IGNORE_CASE
     )
 
     private val PLAYER_OR_AD_BLOCK_REGEX = Regex(
-        "<div\\b[^>]*\\b(?:class\\s*=\\s*(?:\"[^\"]*\\b(?:video-container|controls|play-icon|loading-screen|adsbygoogle|adsterra|effectivecpmnetwork)\\b[^\"]*\"|'[^']*\\b(?:video-container|controls|play-icon|loading-screen|adsbygoogle|adsterra|effectivecpmnetwork)\\b[^']*')|id\\s*=\\s*(?:\"container-[^\"]+\"|'container-[^']+'|\"(?:playIcon|loadingScreen)\"|'(?:playIcon|loadingScreen)'))[^>]*>(?:(?!</?div\\b)[\\s\\S])*?(?:<div\\b[^>]*>(?:(?!</?div\\b)[\\s\\S])*?</div>(?:(?!</?div\\b)[\\s\\S])*?)*</div>",
+        "<(?:div|aside|section)\\b[^>]*\\b(?:class\\s*=\\s*(?:\"[^\"]*\\b(?:video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|live-viewer-badge|scroll-indicator-wrap|related-section|ad-slot-wrapper|ad-fallback|adsbygoogle|adsterra|effectivecpmnetwork)\\b[^\"]*\"|'[^']*\\b(?:video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|live-viewer-badge|scroll-indicator-wrap|related-section|ad-slot-wrapper|ad-fallback|adsbygoogle|adsterra|effectivecpmnetwork)\\b[^']*')|id\\s*=\\s*(?:\"container-[^\"]+\"|'container-[^']+'|\"ad-[^\"]+\"|'ad-[^']+'|\"(?:playIcon|loadingScreen|playbackErrorScreen|videoContainer|playCenterGroup|liveViewerCount)\"|'(?:playIcon|loadingScreen|playbackErrorScreen|videoContainer|playCenterGroup|liveViewerCount)')|data-ad-(?:slot|client)\\s*=|data-app-ad\\s*=)[^>]*>(?:(?!</?(?:div|aside|section)\\b)[\\s\\S])*?(?:<(?:div|aside|section)\\b[^>]*>(?:(?!</?(?:div|aside|section)\\b)[\\s\\S])*?</(?:div|aside|section)>(?:(?!</?(?:div|aside|section)\\b)[\\s\\S])*?)*</(?:div|aside|section)>",
         RegexOption.IGNORE_CASE
     )
 
     private val DANGEROUS_PAIR_TAG_REGEX = Regex(
-        "<(script|style|noscript|iframe|frame|frameset|object|embed|applet|form|button|svg|canvas|audio|video|head|title|template)\\b[^>]*>[\\s\\S]*?</\\1>",
+        "<(script|style|noscript|iframe|frame|frameset|object|embed|applet|form|button|svg|canvas|head|title|template)\\b[^>]*>[\\s\\S]*?</\\1>",
         RegexOption.IGNORE_CASE
     )
 
@@ -62,13 +67,13 @@ object ImportedHtmlSanitizer {
         RegexOption.IGNORE_CASE
     )
 
-    private val INLINE_HANDLER_REGEX = Regex(
-        "\\s+on[a-z]+\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s>]+)",
+    private val INLINE_HANDLER_OR_PING_REGEX = Regex(
+        "\\s+(?:on[a-z]+|ping|formaction)\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s>]+)",
         RegexOption.IGNORE_CASE
     )
 
     private val NOISE_TEXT_ELEMENT_REGEX = Regex(
-        "<(?:p|div|span)\\b[^>]*>\\s*(?:Loading premium content\\.{0,3}|Please allow pop-ups for this site[^<]*|▶\\uFE0F?)\\s*</(?:p|div|span)>",
+        "<(?:p|div|span|h2)\\b[^>]*>\\s*(?:Loading premium content\\.{0,3}|Please allow pop-ups for this site[^<]*|▶\\uFE0F?|সম্পূর্ণ ভিডিওটি দেখতে প্লে বাটনে ক্লিক করুন|মোবাইল ও ডেস্কটপ উপযোগী এইচডি প্লেব্যাক|ভিডিও চালু করতে উপরের প্লে বাটনে চাপ দিন|নিচে Scroll করুন|সম্পর্কিত আরও ভিডিও)\\s*</(?:p|div|span|h2)>",
         RegexOption.IGNORE_CASE
     )
 
@@ -151,6 +156,17 @@ object ImportedHtmlSanitizer {
         }
     }
 
+    private fun isBannerDimension(width: Int?, height: Int?): Boolean {
+        if (width == null || height == null) return false
+        return (width == 728 && height == 90) ||
+            (width == 300 && height == 250) ||
+            (width == 320 && height == 50) ||
+            (width == 160 && height == 600) ||
+            (width == 468 && height == 60) ||
+            (width == 970 && (height == 90 || height == 250)) ||
+            (width == 336 && height == 280)
+    }
+
     private fun normalizeUrl(rawUrl: String?, baseUrl: String?): String? {
         if (rawUrl.isNullOrBlank()) return null
         var candidate = rawUrl.trim()
@@ -225,18 +241,26 @@ object ImportedHtmlSanitizer {
             .replace(DANGEROUS_PAIR_TAG_REGEX, "")
             .replace(DANGEROUS_VOID_TAG_REGEX, "")
 
-        // Iteratively remove imported player & ad container blocks (including nested inner divs)
-        repeat(3) {
+        // Iteratively remove imported player & ad container blocks (including nested inner divs/asides/sections)
+        repeat(4) {
             cleaned = cleaned.replace(PLAYER_OR_AD_BLOCK_REGEX, "")
         }
 
         cleaned = cleaned
             .replace(NOISE_TEXT_ELEMENT_REGEX, "")
-            .replace(INLINE_HANDLER_REGEX, "")
+            .replace(INLINE_HANDLER_OR_PING_REGEX, "")
+
+        val srcAttrRx = Regex("\\bsrc\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", RegexOption.IGNORE_CASE)
+        val srcsetAttrRx = Regex("\\b(?:data-)?srcset\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')", RegexOption.IGNORE_CASE)
+        val altAttrRx = Regex("\\balt\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')", RegexOption.IGNORE_CASE)
+        val widthAttrRx = Regex("\\bwidth\\s*=\\s*(?:\"(\\d+)\"|'(\\d+)'|(\\d+))", RegexOption.IGNORE_CASE)
+        val heightAttrRx = Regex("\\bheight\\s*=\\s*(?:\"(\\d+)\"|'(\\d+)'|(\\d+))", RegexOption.IGNORE_CASE)
 
         // 2. Clean <a> tags:
-        // - ALWAYS unwrap clickable <a> wrapping <img> so preserved PNG/JPG images stay non-clickable
+        // - Remove clickable ad banners completely
+        // - Unwrap <a> wrapping genuine <img> so kept images are non-clickable
         // - Remove popup/javascript/ad/smart/direct/CTA links and foreign Blogger website links
+        // - Preserve legitimate editorial links cleanly
         val anchorRegex = Regex("<a\\b([^>]*)>([\\s\\S]*?)</a>", RegexOption.IGNORE_CASE)
         val hrefRegex = Regex("\\bhref\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", RegexOption.IGNORE_CASE)
         val titleAttrRegex = Regex("\\btitle\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')", RegexOption.IGNORE_CASE)
@@ -244,15 +268,39 @@ object ImportedHtmlSanitizer {
         cleaned = anchorRegex.replace(cleaned) { match ->
             val attrs = match.groupValues[1]
             val innerHtml = match.groupValues[2]
+            val rawHref = hrefRegex.find(attrs)?.let {
+                it.groupValues[1].ifEmpty { it.groupValues[2].ifEmpty { it.groupValues[3] } }
+            }.orEmpty()
+            val normalizedHref = normalizeUrl(rawHref, sourceUrl)
 
             if (Regex("<img\\b", RegexOption.IGNORE_CASE).containsMatchIn(innerHtml)) {
-                // Keep <img> in place cleanly and make it non-clickable
-                innerHtml.replace(Regex(">\\s*(Play Now|Watch Now|Play\\s*&\\s*Watch|Click Here|Download Now)\\s*<", RegexOption.IGNORE_CASE), "><")
-            } else {
-                val rawHref = hrefRegex.find(attrs)?.let {
+                val innerImgMatch = Regex("<img\\b([^>]*)>", RegexOption.IGNORE_CASE).find(innerHtml)
+                val imgAttrs = innerImgMatch?.groupValues?.getOrElse(1) { "" }.orEmpty()
+                val imgRawSrc = srcAttrRx.find(imgAttrs)?.let {
                     it.groupValues[1].ifEmpty { it.groupValues[2].ifEmpty { it.groupValues[3] } }
                 }.orEmpty()
-                val normalizedHref = normalizeUrl(rawHref, sourceUrl)
+                val imgAlt = altAttrRx.find(imgAttrs)?.let { it.groupValues[1].ifEmpty { it.groupValues[2] } }.orEmpty()
+                val w = widthAttrRx.find(imgAttrs)?.let {
+                    (it.groupValues[1].ifEmpty { it.groupValues[2].ifEmpty { it.groupValues[3] } }).toIntOrNull()
+                }
+                val h = heightAttrRx.find(imgAttrs)?.let {
+                    (it.groupValues[1].ifEmpty { it.groupValues[2].ifEmpty { it.groupValues[3] } }).toIntOrNull()
+                }
+
+                val isAdHref = normalizedHref != null && (
+                    isAdOrSmartLinkUrl(normalizedHref) ||
+                        isExternalBloggerSiteHref(normalizedHref, sourceBlogHost)
+                    )
+                val isBannerImg = AD_BANNER_PATH_OR_HOST_REGEX.containsMatchIn(imgRawSrc) ||
+                    AD_BANNER_PATH_OR_HOST_REGEX.containsMatchIn(imgAlt) ||
+                    isBannerDimension(w, h)
+
+                if (isAdHref && isBannerImg) {
+                    ""
+                } else {
+                    innerHtml.replace(Regex(">\\s*(Play Now|Watch Now|Play\\s*&\\s*Watch|Click Here|Download Now)\\s*<", RegexOption.IGNORE_CASE), "><")
+                }
+            } else {
                 val plainAnchorText = innerHtml.replace(Regex("<[^>]*>"), "").replace(Regex("\\s+"), " ").trim()
 
                 if (
@@ -275,15 +323,66 @@ object ImportedHtmlSanitizer {
             }
         }
 
+        // 2b. Validate & preserve safe article <video>/<audio> media elements (outside stripped .video-container)
+        val mediaRegex = Regex("<(video|audio)\\b([^>]*)>([\\s\\S]*?)</\\1>", RegexOption.IGNORE_CASE)
+        val posterAttrRx = Regex("\\bposter\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')", RegexOption.IGNORE_CASE)
+        val sourceTagRx = Regex("<source\\b([^>]*)>", RegexOption.IGNORE_CASE)
+
+        cleaned = mediaRegex.replace(cleaned) { match ->
+            val tag = match.groupValues[1].lowercase(Locale.US)
+            val attrs = match.groupValues[2]
+            val inner = match.groupValues[3]
+
+            val directSrc = srcAttrRx.find(attrs)?.let {
+                it.groupValues[1].ifEmpty { it.groupValues[2].ifEmpty { it.groupValues[3] } }
+            }
+            val cleanDirectSrc = normalizeUrl(directSrc, sourceUrl)
+                ?.takeIf { it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true) }
+            val cleanPoster = normalizeUrl(
+                posterAttrRx.find(attrs)?.let { it.groupValues[1].ifEmpty { it.groupValues[2] } },
+                sourceUrl
+            )?.takeIf { it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true) }
+
+            val validSources = mutableListOf<String>()
+            for (srcMatch in sourceTagRx.findAll(inner)) {
+                val sAttrs = srcMatch.groupValues[1]
+                val sUrl = srcAttrRx.find(sAttrs)?.let {
+                    it.groupValues[1].ifEmpty { it.groupValues[2].ifEmpty { it.groupValues[3] } }
+                }
+                val cleanSourceUrl = normalizeUrl(sUrl, sourceUrl)
+                    ?.takeIf { it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true) }
+                if (!cleanSourceUrl.isNullOrBlank() && !isAdOrSmartLinkUrl(cleanSourceUrl)) {
+                    val typeAttr = Regex("\\btype\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')", RegexOption.IGNORE_CASE)
+                        .find(sAttrs)?.let { it.groupValues[1].ifEmpty { it.groupValues[2] } }
+                    val safeType = if (!typeAttr.isNullOrBlank() && Regex("^[a-z0-9/+.-]+$", RegexOption.IGNORE_CASE).matches(typeAttr)) {
+                        """ type="$typeAttr""""
+                    } else ""
+                    validSources.add("""<source src="$cleanSourceUrl"$safeType />""")
+                }
+            }
+
+            if (cleanDirectSrc.isNullOrBlank() && validSources.isEmpty()) {
+                ""
+            } else {
+                buildString {
+                    append("<$tag controls preload=\"metadata\"")
+                    if (!cleanDirectSrc.isNullOrBlank() && !isAdOrSmartLinkUrl(cleanDirectSrc)) {
+                        append(""" src="$cleanDirectSrc"""")
+                    }
+                    if (tag == "video" && !cleanPoster.isNullOrBlank()) {
+                        append(""" poster="$cleanPoster"""")
+                    }
+                    append(">")
+                    append(validSources.joinToString(""))
+                    append("</$tag>")
+                }
+            }
+        }
+
         // 3. Validate <img> tags cleanly (drop ad/pixel images, strip style/class/id/on* attrs, keep clean src/srcset/alt/width/height)
         val collectedImages = mutableListOf<ThumbnailCandidate>()
         val seenImgSrcs = HashSet<String>()
         val imgRegex = Regex("<img\\b([^>]*)>", RegexOption.IGNORE_CASE)
-        val srcAttrRx = Regex("\\bsrc\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", RegexOption.IGNORE_CASE)
-        val srcsetAttrRx = Regex("\\b(?:data-)?srcset\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')", RegexOption.IGNORE_CASE)
-        val altAttrRx = Regex("\\balt\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')", RegexOption.IGNORE_CASE)
-        val widthAttrRx = Regex("\\bwidth\\s*=\\s*(?:\"(\\d+)\"|'(\\d+)'|(\\d+))", RegexOption.IGNORE_CASE)
-        val heightAttrRx = Regex("\\bheight\\s*=\\s*(?:\"(\\d+)\"|'(\\d+)'|(\\d+))", RegexOption.IGNORE_CASE)
 
         cleaned = imgRegex.replace(cleaned) { match ->
             val attrs = match.groupValues[1]
@@ -304,6 +403,8 @@ object ImportedHtmlSanitizer {
                 }
 
                 if ((w != null && w <= 2) || (h != null && h <= 2)) {
+                    ""
+                } else if (isBannerDimension(w, h) && AD_BANNER_PATH_OR_HOST_REGEX.containsMatchIn(cleanSrc)) {
                     ""
                 } else {
                     if (seenImgSrcs.add(cleanSrc)) {
@@ -330,7 +431,7 @@ object ImportedHtmlSanitizer {
 
         // 4. Strip unnecessary id / class / style attributes from kept elements to avoid Master Template CSS/JS collisions
         cleaned = cleaned
-            .replace(Regex("\\s+(?:id|class|style|data-ad-[a-z-]+)\\s*=\\s*(?:\"[^\"]*\"|'[^']*')", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\s+(?:id|class|style|data-ad-[a-z-]+|data-app-ad)\\s*=\\s*(?:\"[^\"]*\"|'[^']*')", RegexOption.IGNORE_CASE), "")
             .replace(Regex("(?:<br\\s*/?>\\s*){3,}", RegexOption.IGNORE_CASE), "<br /><br />")
             .replace(Regex("\\n{3,}"), "\n\n")
             .trim()

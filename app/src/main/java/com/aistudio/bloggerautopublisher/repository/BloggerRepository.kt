@@ -2,6 +2,7 @@ package com.aistudio.bloggerautopublisher.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.aistudio.bloggerautopublisher.model.AdsSettings
 import com.aistudio.bloggerautopublisher.model.PublishedPost
 import com.aistudio.bloggerautopublisher.model.UserProfile
 import com.aistudio.bloggerautopublisher.template.BloggerTemplateEngine
@@ -25,18 +26,44 @@ class BloggerRepository(context: Context) {
     private val _selectedBlogId = MutableStateFlow(prefs.getString("selected_blog_id", "").orEmpty())
     val selectedBlogId: StateFlow<String> = _selectedBlogId.asStateFlow()
 
+    private val _adsSettings = MutableStateFlow(loadSavedAdsSettings())
+    val adsSettings: StateFlow<AdsSettings> = _adsSettings.asStateFlow()
+
     private val _template = MutableStateFlow(loadMigratedTemplate())
+
+    private fun isLegacyDefaultTemplate(template: String): Boolean {
+        val trimmed = template.trim()
+        if (trimmed.isEmpty()) return false
+        val hasNewMarkers = trimmed.contains("bn-player-heading") ||
+            trimmed.contains("BUTTON_CLICK_CONFIG") ||
+            trimmed.contains("initLazyAds")
+        if (hasNewMarkers) return false
+        return trimmed.contains("MAIN_AD_LINK") && (
+            trimmed.contains("Loading premium content...") ||
+                trimmed.contains("https://cheflobesofficer.com/b1b9djat?key=a45917b862f040650d5da9b0f6ceac52")
+            )
+    }
+
+    private fun loadSavedAdsSettings(): AdsSettings {
+        val raw = prefs.getString("ads_settings_json", null) ?: return AdsSettings.DEFAULT
+        return try {
+            AdsSettings.sanitize(json.decodeFromString<AdsSettings>(raw))
+        } catch (_: Exception) {
+            AdsSettings.DEFAULT
+        }
+    }
 
     private fun loadMigratedTemplate(): String {
         val saved = prefs.getString("custom_template", BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE)
             ?: BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE
+        if (isLegacyDefaultTemplate(saved)) {
+            prefs.edit().putString("custom_template", BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE).apply()
+            return BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE
+        }
         val upgraded = saved
             .replace("""id="videoThumbnail" src="{{THUMBNAIL_URL}}"""", """id="videoThumbnail" src="{{IMAGE_URL}}"""")
             .replace("""CUSTOM_THUMBNAIL_URL = "{{THUMBNAIL_URL}}";""", """CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";""")
-        val migrated = BloggerTemplateEngine.ensureMasterAdConfiguration(
-            BloggerTemplateEngine.deduplicateAdScriptsAndContainers(upgraded),
-            BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE
-        )
+        val migrated = BloggerTemplateEngine.deduplicateAdScriptsAndContainers(upgraded)
         if (migrated != saved) {
             prefs.edit().putString("custom_template", migrated).apply()
         }
@@ -93,6 +120,19 @@ class BloggerRepository(context: Context) {
         val trimmed = key.trim()
         prefs.edit().putString("gemini_api_key", trimmed).apply()
         _geminiApiKey.value = trimmed
+    }
+
+    fun saveAdsSettings(settings: AdsSettings): AdsSettings {
+        val clean = AdsSettings.sanitize(
+            settings.copy(updatedAt = System.currentTimeMillis().toString())
+        )
+        prefs.edit().putString("ads_settings_json", json.encodeToString(clean)).apply()
+        _adsSettings.value = clean
+        return clean
+    }
+
+    fun resetAdsSettings(): AdsSettings {
+        return saveAdsSettings(AdsSettings.DEFAULT)
     }
 
     fun selectBlog(blogId: String) {

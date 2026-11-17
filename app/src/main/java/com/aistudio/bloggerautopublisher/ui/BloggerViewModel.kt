@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aistudio.bloggerautopublisher.api.BloggerApiService
 import com.aistudio.bloggerautopublisher.api.GeminiApiService
+import com.aistudio.bloggerautopublisher.model.AdsSettings
 import com.aistudio.bloggerautopublisher.model.CompositionStyle
 import com.aistudio.bloggerautopublisher.model.PublishedPost
 import com.aistudio.bloggerautopublisher.repository.BloggerRepository
@@ -56,6 +57,11 @@ class BloggerViewModel(
         viewModelScope.launch {
             repository.geminiApiKey.collect { key ->
                 _uiState.update { it.copy(geminiApiKey = key) }
+            }
+        }
+        viewModelScope.launch {
+            repository.adsSettings.collect { ads ->
+                _uiState.update { it.copy(adsSettings = ads) }
             }
         }
 
@@ -390,6 +396,14 @@ class BloggerViewModel(
         repository.saveGeminiApiKey(key)
     }
 
+    fun saveAdsSettings(settings: AdsSettings) {
+        repository.saveAdsSettings(settings)
+    }
+
+    fun resetAdsSettings() {
+        repository.resetAdsSettings()
+    }
+
     fun openHistory() {
         _uiState.update { it.copy(isHistoryOpen = true) }
     }
@@ -430,7 +444,8 @@ class BloggerViewModel(
             title = effectiveTitle,
             imageUrl = effectiveImageUrl,
             thumbnailUrl = effectiveThumbUrl,
-            caption = state.caption
+            caption = state.caption,
+            adsSettings = state.adsSettings
         )
 
         val labelsList = state.labels.split(",").map { it.trim() }.filter { it.isNotEmpty() }

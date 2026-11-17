@@ -198,6 +198,7 @@ fun BloggerApp(viewModel: BloggerViewModel) {
             thumbnailUrl = uiState.mainImageUrlOverride ?: uiState.mainImage?.uri?.toString(),
             caption = uiState.caption,
             template = uiState.customTemplate,
+            adsSettings = uiState.adsSettings,
             onPublishNow = { viewModel.publishPost() },
             blogName = currentBlog?.name
         )
@@ -219,9 +220,12 @@ fun BloggerApp(viewModel: BloggerViewModel) {
             isOpen = uiState.isSettingsOpen,
             onClose = { viewModel.closeSettings() },
             currentTemplate = uiState.customTemplate,
+            currentAdsSettings = uiState.adsSettings,
             currentGeminiApiKey = uiState.geminiApiKey,
             onSaveTemplate = { viewModel.saveTemplate(it) },
             onResetTemplate = { viewModel.resetTemplate() },
+            onSaveAdsSettings = { viewModel.saveAdsSettings(it) },
+            onResetAdsSettings = { viewModel.resetAdsSettings() },
             onSaveGeminiApiKey = { viewModel.saveGeminiApiKey(it) }
         )
 

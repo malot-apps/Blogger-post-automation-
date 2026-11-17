@@ -132,7 +132,7 @@ fun HeaderSection(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Tune,
-                        contentDescription = "Template Settings",
+                        contentDescription = "Template, Ads & Gemini Settings",
                         tint = Slate700,
                         modifier = Modifier.size(20.dp)
                     )

@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.aistudio.bloggerautopublisher.model.AdsSettings
 import com.aistudio.bloggerautopublisher.template.BloggerTemplateEngine
 import com.aistudio.bloggerautopublisher.ui.theme.*
 import com.aistudio.bloggerautopublisher.util.TitleGenerator
@@ -73,6 +74,7 @@ fun PostPreviewDialog(
     thumbnailUrl: String?,
     caption: String,
     template: String,
+    adsSettings: AdsSettings = AdsSettings.DEFAULT,
     onPublishNow: () -> Unit,
     blogName: String?
 ) {
@@ -83,13 +85,14 @@ fun PostPreviewDialog(
     var deviceMode by remember { mutableStateOf("mobile") } // mobile or desktop
 
     val effectiveTitle = if (title.isNotBlank()) title else TitleGenerator.generateTitleFromCaption(caption)
-    val renderedHtml = remember(effectiveTitle, imageUrl, caption, template) {
+    val renderedHtml = remember(effectiveTitle, imageUrl, caption, template, adsSettings) {
         BloggerTemplateEngine.renderTemplate(
             template = template,
             title = effectiveTitle,
             imageUrl = imageUrl,
             thumbnailUrl = imageUrl,
-            caption = caption
+            caption = caption,
+            adsSettings = adsSettings
         )
     }
 

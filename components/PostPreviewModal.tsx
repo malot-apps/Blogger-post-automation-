@@ -15,6 +15,7 @@ import {
   Film,
 } from 'lucide-react';
 import { renderBloggerPostTemplate } from '@/src/templates/BloggerPostTemplate';
+import type { AdsSettings } from '@/src/lib/adsSettings';
 
 interface PostPreviewModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ interface PostPreviewModalProps {
   caption: string;
   labels: string;
   templateString: string;
+  adsSettings?: AdsSettings;
   onPublishNow: () => void;
   isPublishing: boolean;
   blogName?: string;
@@ -39,6 +41,7 @@ export function PostPreviewModal({
   caption,
   labels,
   templateString,
+  adsSettings,
   onPublishNow,
   isPublishing,
   blogName,
@@ -49,12 +52,16 @@ export function PostPreviewModal({
 
   if (!isOpen) return null;
 
-  const finalHtml = renderBloggerPostTemplate(templateString, {
-    title,
-    imageUrl,
-    thumbnailUrl: imageUrl,
-    caption,
-  });
+  const finalHtml = renderBloggerPostTemplate(
+    templateString,
+    {
+      title,
+      imageUrl,
+      thumbnailUrl: imageUrl,
+      caption,
+    },
+    adsSettings
+  );
 
   const parsedLabels = labels
     .split(',')

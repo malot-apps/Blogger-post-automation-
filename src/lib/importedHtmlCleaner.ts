@@ -1,3 +1,5 @@
+import { applyAdsSettingsToHtml, DEFAULT_ADS_SETTINGS, type AdsSettings } from './adsSettings';
+
 /**
  * Shared, isomorphic utilities for:
  * 1. Detecting external ad networks, Smart Links, Direct Links, popup/redirect URLs,
@@ -5,7 +7,7 @@
  * 2. Cleaning imported article HTML before merging into the Master HTML Template
  *    (even in client-side preview or direct template rendering).
  * 3. Protecting, injecting, and deduplicating the Master HTML Template's ad scripts
- *    and ad containers so only the Master Template's configured ads run.
+ *    and ad containers so only Ads Settings-controlled ads run.
  */
 
 export const TRACKING_OR_AD_HOST_PATTERNS: RegExp[] = [
@@ -144,13 +146,13 @@ export const PROMO_CTA_TEXT_REGEX =
   /^(buy now|shop now|check price|get deal|claim offer|download now|free download|download|play now|watch now|play\s*&\s*watch|watch full video|full video|watch video|click here|continue|open link|skip ad|visit link|subscribe now|join telegram|follow us|advertisement|sponsored|loading premium content\.{0,3}|▶\ufe0f?|ভিডিওটি চালু করুন|এখনই দেখুন|পুরো ভিডিও দেখুন|ডাউনলোড করুন|ক্লিক করুন)$/i;
 
 export const PLAYER_OR_AD_CONTAINER_ID_REGEX =
-  /^(container-[a-z0-9_-]{6,}|playIcon|loadingScreen|videoThumbnail|btn\d+|ads?|ad[-_]?(?:box|slot|unit|banner|container|wrapper)|sidebar[-_]?ads?)$/i;
+  /^(container-[a-z0-9_-]{6,}|playIcon|loadingScreen|playbackErrorScreen|playCenterGroup|videoThumbnail|videoPlayer|videoContainer|liveViewerCount|retryPlayBtn|ad-top-banner|ad-native-thumb|ad-player-bottom|ad-in-content|ad-related-content|ad-bottom-banner|btn\d+|ads?|ad[-_]?(?:box|slot|unit|banner|container|wrapper)|sidebar[-_]?ads?)$/i;
 
 export const PLAYER_OR_AD_MARKER_REGEX =
-  /(^|[-_\s])(ad|ads|advert|advertisement|ad-slot|ad-box|ad-unit|ad-banner|ad-container|ad-wrapper|adsense|adsbygoogle|adsterra|effectivecpmnetwork|mgid|taboola|outbrain|propeller|popads|popcash|monetag|smartlink|direct-link|directlink|sponsored-box|sponsor-banner|promo-banner|promotional-banner|affiliate-box|affiliate-banner|related-posts|share-buttons|social-share|newsletter-box|subscribe-box|cookie-banner|popup-overlay|blogger-post-footer|video-container|controls|play-icon|loading-screen)([-_\s]|$)/i;
+  /(^|[-_\s])(ad|ads|advert|advertisement|ad-slot|ad-slot-wrapper|ad-slot-inner|ad-slot-label|ad-fallback|ad-box|ad-unit|ad-banner|ad-container|ad-wrapper|adsense|adsbygoogle|adsterra|effectivecpmnetwork|highperformanceformat|mgid|taboola|outbrain|propeller|popads|popcash|monetag|smartlink|direct-link|directlink|sponsored-box|sponsor-banner|promo-banner|promotional-banner|affiliate-box|affiliate-banner|related-posts|related-section|share-buttons|social-share|newsletter-box|subscribe-box|cookie-banner|popup-overlay|blogger-post-footer|video-container|bn-player-heading-wrap|live-viewer-badge|play-center-group|playback-error-screen|scroll-indicator-wrap|controls|play-icon|loading-screen)([-_\s]|$)/i;
 
 export const FOREIGN_TEMPLATE_NOISE_TEXT_REGEX =
-  /^(loading premium content\.{0,3}|please allow pop-ups for this site.*|▶\ufe0f?)$/i;
+  /^(loading premium content\.{0,3}|please allow pop-ups for this site.*|sponsored banner|recommended partner|player sponsor|sponsored highlight|more to explore|end of post banner|ad content unavailable right now\.|ভিডিও চালু করতে উপরের প্লে বাটনে চাপ দিন|সম্পূর্ণ ভিডিওটি দেখতে প্লে বাটনে ক্লিক করুন|▶\ufe0f?)$/i;
 
 function hostMatches(hostname: string, patterns: RegExp[]): boolean {
   const clean = hostname.toLowerCase();
@@ -318,9 +320,9 @@ export function sanitizeImportedArticleFragment(
       const doc = parser.parseFromString(`<div id="__clean_root__">${rawHtml}</div>`, 'text/html');
       const root = doc.getElementById('__clean_root__');
       if (root) {
-        // 1. Remove dangerous/executable/interactive elements completely
+        // 1. Remove dangerous/executable/interactive elements completely (preserve clean article <video>/<audio> media below)
         const removeTags =
-          'script, style, noscript, iframe, frame, frameset, object, embed, applet, param, form, input, textarea, button, select, option, svg, canvas, audio, video, track, map, area, template, link, meta, base, title, head, ins.adsbygoogle, [data-ad-client], [data-ad-slot]';
+          'script, style, noscript, iframe, frame, frameset, object, embed, applet, param, form, input, textarea, button, select, option, svg, canvas, track, map, area, template, link, meta, base, title, head, ins.adsbygoogle, [data-ad-client], [data-ad-slot], [data-app-ad]';
         root.querySelectorAll(removeTags).forEach((el) => el.remove());
 
         // 2. Remove imported player & ad containers
@@ -336,7 +338,7 @@ export function sanitizeImportedArticleFragment(
             /visibility\s*:\s*hidden/i.test(style);
           const isPlayerOrAdContainer =
             PLAYER_OR_AD_CONTAINER_ID_REGEX.test(id) ||
-            /(^|\s)(video-container|controls|play-icon|loading-screen|adsbygoogle|adsterra)(\s|$)/i.test(cls);
+            /(^|\s)(video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|live-viewer-badge|scroll-indicator-wrap|related-section|ad-slot-wrapper|ad-fallback|adsbygoogle|adsterra|effectivecpmnetwork)(\s|$)/i.test(cls);
 
           if (isPlayerOrAdContainer || isHidden || PLAYER_OR_AD_MARKER_REGEX.test(`${id} ${cls} ${aria}`)) {
             if (isPlayerOrAdContainer || isHidden) {
@@ -351,9 +353,33 @@ export function sanitizeImportedArticleFragment(
           }
         });
 
-        // 3. Clean <a> elements: unwrap all <a> wrapping <img>, remove popup/ad/smart/direct/CTA links
+        // 2b. Validate remaining <video>/<audio> elements (strip ad/empty/malicious media, preserve clean article media)
+        root.querySelectorAll('video, audio').forEach((media) => {
+          const rawSrc =
+            media.getAttribute('src') ||
+            media.querySelector('source')?.getAttribute('src') ||
+            '';
+          const cleanSrc = normalizeExternalHref(rawSrc, options.baseUrl);
+          if (!cleanSrc || isAdOrSmartLinkUrl(cleanSrc)) {
+            media.remove();
+            return;
+          }
+          const poster = media.getAttribute('poster');
+          const cleanPoster = poster ? normalizeExternalHref(poster, options.baseUrl) : null;
+          Array.from(media.attributes).forEach((attr) => media.removeAttribute(attr.name));
+          media.setAttribute('src', cleanSrc);
+          media.setAttribute('controls', '');
+          media.setAttribute('preload', 'metadata');
+          if (cleanPoster && !isAdOrSmartLinkUrl(cleanPoster)) {
+            media.setAttribute('poster', cleanPoster);
+          }
+          media.querySelectorAll('source').forEach((s) => s.remove());
+        });
+
+        // 3. Clean <a> elements: remove clickable ad banners completely, unwrap safe image links, keep clean editorial links
         root.querySelectorAll('a').forEach((a) => {
-          const hasImg = a.querySelector('img') !== null;
+          const img = a.querySelector('img');
+          const hasImg = img !== null;
           const hasOnClick = Array.from(a.attributes).some((attr) =>
             attr.name.toLowerCase().startsWith('on')
           );
@@ -361,9 +387,35 @@ export function sanitizeImportedArticleFragment(
           const normalizedHref = normalizeExternalHref(rawHref, options.baseUrl);
           const text = (a.textContent || '').replace(/\s+/g, ' ').trim();
 
-          if (hasImg) {
-            // Strip CTA text nodes inside image links if linking to ad/external site, keep clean <img> non-clickable
-            if (isAdOrSmartLinkUrl(normalizedHref || rawHref) || isExternalBloggerSiteHref(normalizedHref || rawHref, sourceBlogHost)) {
+          if (hasImg && img) {
+            const hrefTarget = normalizedHref || rawHref;
+            const imgSrc =
+              img.getAttribute('src') ||
+              img.getAttribute('data-src') ||
+              img.getAttribute('data-original') ||
+              '';
+            const imgAlt = img.getAttribute('alt') || '';
+            const w = parseInt(img.getAttribute('width') || '0', 10) || 0;
+            const h = parseInt(img.getAttribute('height') || '0', 10) || 0;
+            const isBannerSized =
+              (w > 0 && h > 0 && w <= 180 && h <= 60) ||
+              (w === 728 && h === 90) ||
+              (w === 300 && h === 250) ||
+              (w === 468 && h === 60) ||
+              (w === 320 && h === 50) ||
+              (w === 160 && h === 600);
+            const isAdBannerFilename =
+              /(ad[-_]?banner|sponsored|promo[-_]?banner|buy[-_]?now|shop[-_]?now|728x90|300x250|468x60|320x50|160x600)/i.test(
+                `${imgSrc} ${imgAlt}`
+              );
+            const pointsToAd = isAdOrSmartLinkUrl(hrefTarget);
+
+            if (pointsToAd && (isBannerSized || isAdBannerFilename || PROMO_CTA_TEXT_REGEX.test(text))) {
+              a.remove();
+              return;
+            }
+
+            if (pointsToAd || isExternalBloggerSiteHref(hrefTarget, sourceBlogHost)) {
               a.childNodes.forEach((child) => {
                 if (child.nodeType === 3 && PROMO_CTA_TEXT_REGEX.test((child.textContent || '').trim())) {
                   child.textContent = '';
@@ -379,12 +431,12 @@ export function sanitizeImportedArticleFragment(
           }
 
           if (
-            hasOnClick ||
             !normalizedHref ||
             isAdOrSmartLinkUrl(normalizedHref) ||
-            isExternalBloggerSiteHref(normalizedHref, sourceBlogHost)
+            isExternalBloggerSiteHref(normalizedHref, sourceBlogHost) ||
+            PROMO_CTA_TEXT_REGEX.test(text)
           ) {
-            if (!text || PROMO_CTA_TEXT_REGEX.test(text) || hasOnClick) {
+            if (!text || PROMO_CTA_TEXT_REGEX.test(text) || (!normalizedHref && hasOnClick)) {
               a.remove();
             } else {
               const frag = doc.createDocumentFragment();
@@ -396,7 +448,7 @@ export function sanitizeImportedArticleFragment(
             return;
           }
 
-          // Safe editorial link: keep href cleanly without event handlers or inline CSS
+          // Safe editorial link: keep href cleanly without event handlers, ping trackers, or inline CSS
           const safeTitle = a.getAttribute('title');
           Array.from(a.attributes).forEach((attr) => a.removeAttribute(attr.name));
           a.setAttribute('href', normalizedHref);
@@ -414,7 +466,9 @@ export function sanitizeImportedArticleFragment(
               el.getAttribute('data-src') ||
               el.getAttribute('data-original') ||
               '';
-            const cleanSrc = normalizeExternalHref(src, options.baseUrl) || (src.startsWith('data:image/') && !src.startsWith('data:image/svg+xml') ? src : null);
+            const cleanSrc =
+              normalizeExternalHref(src, options.baseUrl) ||
+              (src.startsWith('data:image/') && !src.startsWith('data:image/svg+xml') ? src : null);
             if (!cleanSrc || isAdOrSmartLinkUrl(cleanSrc)) {
               el.remove();
               return;
@@ -431,11 +485,15 @@ export function sanitizeImportedArticleFragment(
             if (title) el.setAttribute('title', title);
             if (width) el.setAttribute('width', width);
             if (height) el.setAttribute('height', height);
+          } else if (tag === 'video' || tag === 'audio') {
+            return;
           } else {
             const keepHref = tag === 'a' ? el.getAttribute('href') : null;
             const keepTitle = tag === 'a' ? el.getAttribute('title') : null;
             const keepTarget = tag === 'a' ? el.getAttribute('target') : null;
             const keepRel = tag === 'a' ? el.getAttribute('rel') : null;
+            const keepColspan = tag === 'th' || tag === 'td' ? el.getAttribute('colspan') : null;
+            const keepRowspan = tag === 'th' || tag === 'td' ? el.getAttribute('rowspan') : null;
             Array.from(el.attributes).forEach((attr) => el.removeAttribute(attr.name));
             if (tag === 'a' && keepHref) {
               el.setAttribute('href', keepHref);
@@ -443,6 +501,8 @@ export function sanitizeImportedArticleFragment(
               if (keepTarget) el.setAttribute('target', keepTarget);
               if (keepRel) el.setAttribute('rel', keepRel);
             }
+            if ((tag === 'th' || tag === 'td') && keepColspan) el.setAttribute('colspan', keepColspan);
+            if ((tag === 'th' || tag === 'td') && keepRowspan) el.setAttribute('rowspan', keepRowspan);
           }
         });
 
@@ -465,28 +525,33 @@ export function sanitizeImportedArticleFragment(
   // Regex fallback for non-DOM environments (Node SSR / fallback before Cheerio)
   let cleaned = rawHtml
     .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<(script|style|noscript|iframe|frame|frameset|object|embed|applet|form|button|svg|canvas|audio|video|head|title)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(script|style|noscript|iframe|frame|frameset|object|embed|applet|form|button|svg|canvas|head|title)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
     .replace(/<(script|style|noscript|iframe|frame|embed|object|input|textarea|button|meta|link|base)\b[^>]*\/?>/gi, '')
-    .replace(/<div\b[^>]*\b(?:class=["'][^"']*\b(?:video-container|controls|play-icon|loading-screen)\b[^"']*["']|id=["']container-[^"']+["'])[^>]*>[\s\S]*?<\/div>/gi, '')
-    // Unwrap clickable <a> wrapping <img> so images stay preserved and non-clickable
-    .replace(/<a\b[^>]*>(\s*<img\b[^>]*>\s*)<\/a>/gi, '$1')
-    // Strip inline event handlers
-    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/<aside\b[^>]*\b(?:ad-slot-wrapper|data-ad-slot|data-app-ad)\b[^>]*>[\s\S]*?<\/aside>/gi, '')
+    .replace(/<section\b[^>]*\brelated-section\b[^>]*>[\s\S]*?<\/section>/gi, '')
+    .replace(/<div\b[^>]*\b(?:class=["'][^"']*\b(?:video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|scroll-indicator-wrap)\b[^"']*["']|id=["']container-[^"']+["'])[^>]*>[\s\S]*?<\/div>/gi, '')
+    // Strip inline event handlers and tracking ping attributes
+    .replace(/\s+(?:on[a-z]+|ping)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     // Remove javascript:/vbscript: hrefs
     .replace(/<a\b[^>]*href\s*=\s*["']\s*(?:javascript|vbscript|data):[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi, '$1')
     // Remove id/class/style attrs to prevent Master Template CSS/JS collision
     .replace(/\s+(?:id|class|style)\s*=\s*(?:"[^"]*"|'[^']*')/gi, '');
 
-  // Clean remaining <a> tags with ad/smart/direct/source-blog hrefs
+  // Clean remaining <a> tags (remove clickable ad banners completely; unwrap safe image links; remove ad/CTA links)
   cleaned = cleaned.replace(
     /<a\b([^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*)>([\s\S]*?)<\/a>/gi,
     (fullMatch, _attrs, dqHref: string | undefined, sqHref: string | undefined, innerHtml: string) => {
       const href = dqHref || sqHref || '';
+      const norm = normalizeExternalHref(href, options.baseUrl) || href;
       if (/<img\b/i.test(innerHtml)) {
-        // Keep image non-clickable, remove anchor wrapper
+        const isAdBanner =
+          isAdOrSmartLinkUrl(norm) &&
+          /(ad[-_]?banner|sponsored|promo[-_]?banner|728x90|300x250|468x60|320x50|160x600|width=["']?(?:728|300|468|320|160|1[0-7]\d|\d{2})["']?)/i.test(
+            innerHtml
+          );
+        if (isAdBanner) return '';
         return innerHtml;
       }
-      const norm = normalizeExternalHref(href, options.baseUrl) || href;
       if (isAdOrSmartLinkUrl(norm) || isExternalBloggerSiteHref(norm, sourceBlogHost)) {
         const plain = innerHtml.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
         if (!plain || PROMO_CTA_TEXT_REGEX.test(plain)) {
@@ -545,12 +610,25 @@ export function deduplicateAdScriptsAndContainers(html: string): string {
 
   // 3. Deduplicate repeated Master player Smart Link config scripts if pasted twice
   output = output.replace(
-    /<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?\bMAIN_AD_LINK\b[\s\S]*?<\/script>/gi,
+    /<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?(?:\bMAIN_AD_LINK\b|\bBUTTON_CLICK_CONFIG\b)[\s\S]*?<\/script>/gi,
     (fullMatch) => {
       if (seenMainPlayerConfig) {
         return '';
       }
       seenMainPlayerConfig = true;
+      return fullMatch;
+    }
+  );
+
+  // 4. Deduplicate managed banner blocks
+  let seenBannerAd = false;
+  output = output.replace(
+    /<div\b[^>]*\bdata-app-ad=["']banner["'][^>]*>[\s\S]*?<\/div>/gi,
+    (fullMatch) => {
+      if (seenBannerAd) {
+        return '';
+      }
+      seenBannerAd = true;
       return fullMatch;
     }
   );
@@ -605,60 +683,14 @@ export function extractMasterAdSections(masterTemplate: string): MasterAdSection
 }
 
 /**
- * Ensures the rendered/active template contains all configured Master Template ad links/scripts
- * (injecting any missing Master Template head/player/body ad blocks automatically)
- * and removes any duplicate ad scripts or ad containers.
+ * Ensures the rendered/active template contains ONLY the user's enabled Ads Settings
+ * (without ever re-injecting disabled or deleted ads) and removes duplicate ad scripts/containers.
  */
 export function ensureMasterAdConfiguration(
   candidateHtml: string,
-  masterTemplate: string
+  _masterTemplate?: string,
+  adsSettings?: AdsSettings | null
 ): string {
-  const sections = extractMasterAdSections(masterTemplate);
-  let output = candidateHtml;
-
-  // Ensure head ad script is present
-  if (sections.headAdScript) {
-    const srcMatch = /\bsrc\s*=\s*["']([^"']+)["']/i.exec(sections.headAdScript);
-    const headSrc = srcMatch?.[1];
-    if (headSrc && !output.includes(headSrc)) {
-      if (/<head\b[^>]*>/i.test(output)) {
-        output = output.replace(/<head\b[^>]*>/i, (m) => `${m}\n  ${sections.headAdScript}`);
-      } else {
-        output = `${sections.headAdScript}\n${output}`;
-      }
-    }
-  }
-
-  // Ensure Master MAIN_AD_LINK & LINKS script is present
-  if (sections.playerAdScript && !/\bMAIN_AD_LINK\b/.test(output)) {
-    if (/<\/body>/i.test(output)) {
-      output = output.replace(/<\/body>/i, () => `  ${sections.playerAdScript}\n</body>`);
-    } else {
-      output = `${output}\n${sections.playerAdScript}`;
-    }
-  }
-
-  // Ensure body banner/native ad scripts & containers from Master Template are present
-  if (sections.bodyBannerScripts) {
-    const missingSnippets: string[] = [];
-    const snippetRx =
-      /(?:<script\b(?![^>]*\bsrc=)[^>]*>\s*atOptions\s*=[\s\S]*?<\/script>\s*)?<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>[\s\S]*?<\/script>(?:\s*<div\b[^>]*\bid\s*=\s*["']container-[^"']+["'][^>]*>\s*<\/div>)?/gi;
-    let sm: RegExpExecArray | null;
-    while ((sm = snippetRx.exec(sections.bodyBannerScripts)) !== null) {
-      const scriptSrc = sm[1];
-      if (scriptSrc && !output.includes(scriptSrc)) {
-        missingSnippets.push(sm[0].trim());
-      }
-    }
-    if (missingSnippets.length > 0) {
-      const block = missingSnippets.join('\n  ');
-      if (/<\/body>/i.test(output)) {
-        output = output.replace(/<\/body>/i, () => `  ${block}\n</body>`);
-      } else {
-        output = `${output}\n${block}`;
-      }
-    }
-  }
-
-  return deduplicateAdScriptsAndContainers(output);
+  const deduplicated = deduplicateAdScriptsAndContainers(candidateHtml);
+  return applyAdsSettingsToHtml(deduplicated, adsSettings || DEFAULT_ADS_SETTINGS);
 }

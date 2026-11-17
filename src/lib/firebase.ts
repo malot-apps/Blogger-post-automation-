@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { handleFirestoreError, OperationType } from './firestoreErrors';
+import { sanitizeAdsSettings, type AdsSettings } from './adsSettings';
 
 /**
  * Authoritative production domain and origin configurations.
@@ -446,5 +447,56 @@ export async function fetchPublishedPosts(userId: string, count = 20): Promise<S
     return results;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+/**
+ * Save per-user Ads Settings to Firestore cleanly.
+ */
+export async function saveAdsSettingsToFirestore(userId: string, settings: AdsSettings): Promise<void> {
+  if (!auth.currentUser || auth.currentUser.uid !== userId) return;
+  const path = `users/${userId}/adsSettings/default`;
+  try {
+    const clean = sanitizeAdsSettings(settings);
+    const ref = doc(db, 'users', userId, 'adsSettings', 'default');
+    await setDoc(ref, {
+      userId,
+      smartLink: {
+        enabled: clean.smartLink.enabled,
+        url: clean.smartLink.url.slice(0, 1000),
+      },
+      directLink: {
+        enabled: clean.directLink.enabled,
+        url: clean.directLink.url.slice(0, 1000),
+      },
+      popupAd: {
+        enabled: clean.popupAd.enabled,
+        url: clean.popupAd.url.slice(0, 1000),
+      },
+      bannerAd: {
+        enabled: clean.bannerAd.enabled,
+        imageUrl: clean.bannerAd.imageUrl.slice(0, 2048),
+        clickUrl: clean.bannerAd.clickUrl.slice(0, 1000),
+      },
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Load per-user Ads Settings from Firestore cleanly.
+ */
+export async function loadAdsSettingsFromFirestore(userId: string): Promise<AdsSettings | null> {
+  if (!auth.currentUser || auth.currentUser.uid !== userId) return null;
+  const path = `users/${userId}/adsSettings/default`;
+  try {
+    const ref = doc(db, 'users', userId, 'adsSettings', 'default');
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    return sanitizeAdsSettings(snap.data());
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
   }
 }

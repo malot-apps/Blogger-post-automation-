@@ -71,6 +71,49 @@
         }
       },
       "required": ["id", "userId", "blogId", "title", "url"]
+    },
+    "adsSettings": {
+      "title": "AdsSettings",
+      "description": "Per-user advertisement links and banner settings",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "smartLink": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "url": { "type": "string", "maxLength": 1000 }
+          },
+          "required": ["enabled", "url"]
+        },
+        "directLink": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "url": { "type": "string", "maxLength": 1000 }
+          },
+          "required": ["enabled", "url"]
+        },
+        "popupAd": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "url": { "type": "string", "maxLength": 1000 }
+          },
+          "required": ["enabled", "url"]
+        },
+        "bannerAd": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "imageUrl": { "type": "string", "maxLength": 2048 },
+            "clickUrl": { "type": "string", "maxLength": 1000 }
+          },
+          "required": ["enabled", "imageUrl", "clickUrl"]
+        },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "smartLink", "directLink", "popupAd", "bannerAd"]
     }
   },
   "firestore": {
@@ -85,6 +128,12 @@
         "$ref": "#/entities/publishedPost"
       },
       "description": "History of posts published to Blogger by user"
+    },
+    "/users/{userId}/adsSettings/{settingId}": {
+      "schema": {
+        "$ref": "#/entities/adsSettings"
+      },
+      "description": "User advertisement configuration"
     }
   }
 }

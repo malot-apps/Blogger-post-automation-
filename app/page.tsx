@@ -13,11 +13,19 @@ import {
   fetchPublishedPosts,
   syncUserProfile,
   loadUserProfile,
+  saveAdsSettingsToFirestore,
+  loadAdsSettingsFromFirestore,
   type StoredPublishedPost,
 } from '@/src/lib/firebase';
 import type { BloggerBlog } from '@/src/server/bloggerService';
 import { DEFAULT_MASTER_TEMPLATE } from '@/src/templates/BloggerPostTemplate';
 import { deduplicateAdScriptsAndContainers } from '@/src/lib/importedHtmlCleaner';
+import {
+  type AdsSettings,
+  isLegacyDefaultTemplate,
+  loadAdsSettings,
+  saveAdsSettings,
+} from '@/src/lib/adsSettings';
 import { generateTitleFromCaption } from '@/src/lib/titleGenerator';
 import type { ImageProcessingResult } from '@/src/lib/imageUtils';
 
@@ -65,6 +73,14 @@ export default function Home() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY_TEMPLATE);
       if (saved) {
+        if (isLegacyDefaultTemplate(saved)) {
+          try {
+            localStorage.setItem(STORAGE_KEY_TEMPLATE, DEFAULT_MASTER_TEMPLATE);
+          } catch {
+            // ignore
+          }
+          return DEFAULT_MASTER_TEMPLATE;
+        }
         const migrated = deduplicateAdScriptsAndContainers(
           saved
             .replace(/id="videoThumbnail" src="\{\{THUMBNAIL_URL\}\}"/g, 'id="videoThumbnail" src="{{IMAGE_URL}}"')
@@ -83,6 +99,8 @@ export default function Home() {
     }
     return DEFAULT_MASTER_TEMPLATE;
   });
+
+  const [adsSettings, setAdsSettings] = useState<AdsSettings>(() => loadAdsSettings());
 
   // Modals state
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -197,11 +215,22 @@ export default function Home() {
           displayName: authedUser.displayName || undefined,
         }).catch(() => {});
 
-        // Check saved default blog from Firestore
+        // Check saved default blog & Ads Settings from Firestore
         loadUserProfile(authedUser.uid)
           .then((prof) => {
             if (prof?.defaultBlogId) {
               setSelectedBlogId((curr) => curr || prof.defaultBlogId || '');
+            }
+          })
+          .catch(() => {});
+
+        const localAds = loadAdsSettings(authedUser.uid);
+        setAdsSettings(localAds);
+        loadAdsSettingsFromFirestore(authedUser.uid)
+          .then((remoteAds) => {
+            if (remoteAds) {
+              const saved = saveAdsSettings(remoteAds, authedUser.uid);
+              setAdsSettings(saved);
             }
           })
           .catch(() => {});
@@ -299,6 +328,17 @@ export default function Home() {
     }
   };
 
+  // Save Ads Settings handler (persistent in localStorage & Firestore)
+  const handleSaveAdsSettings = (newSettings: AdsSettings) => {
+    const saved = saveAdsSettings(newSettings, user?.uid);
+    setAdsSettings(saved);
+    if (user) {
+      saveAdsSettingsToFirestore(user.uid, saved).catch((err) =>
+        console.warn('Firestore ads settings save notice:', err)
+      );
+    }
+  };
+
   // Refresh blogs
   const handleRefreshBlogs = async () => {
     const token = await getAccessToken();
@@ -360,6 +400,7 @@ export default function Home() {
           title: title.trim() || undefined,
           labels: labels.trim() || undefined,
           customTemplate,
+          adsSettings,
         }),
       });
 
@@ -625,18 +666,21 @@ export default function Home() {
         caption={caption}
         labels={labels}
         templateString={customTemplate}
+        adsSettings={adsSettings}
         onPublishNow={handlePublish}
         isPublishing={isPublishing}
         blogName={selectedBlog?.name}
       />
 
-      {/* Template Settings Modal */}
+      {/* Template & Ads Settings Modal */}
       <TemplateSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         currentTemplate={customTemplate}
         onSaveTemplate={handleSaveTemplate}
         onReloadFromFile={reloadTemplateFromFile}
+        currentAdsSettings={adsSettings}
+        onSaveAdsSettings={handleSaveAdsSettings}
       />
 
       {/* Setup & Help Guide Modal */}
@@ -671,6 +715,7 @@ export default function Home() {
         targetBlogId={selectedBlogId}
         targetBlogName={selectedBlog?.name}
         templateString={customTemplate}
+        adsSettings={adsSettings}
         onPostPublished={() => {
           if (user) loadHistory(user.uid);
         }}

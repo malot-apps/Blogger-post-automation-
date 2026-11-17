@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   X,
   Sliders,
@@ -15,8 +15,20 @@ import {
   EyeOff,
   ShieldCheck,
   Globe,
+  Megaphone,
+  Trash2,
+  ExternalLink,
+  Image as ImageIcon,
+  Link2,
 } from 'lucide-react';
 import { DEFAULT_MASTER_TEMPLATE } from '@/src/templates/BloggerPostTemplate';
+import {
+  type AdsSettings,
+  DEFAULT_ADS_SETTINGS,
+  EMPTY_ADS_SETTINGS,
+  sanitizeAdsSettings,
+  validateAdUrl,
+} from '@/src/lib/adsSettings';
 
 const STORAGE_KEY_GEMINI = 'blogger_user_gemini_api_key';
 const STORAGE_KEY_AI_LANG = 'blogger_user_ai_language';
@@ -27,7 +39,10 @@ interface TemplateSettingsModalProps {
   currentTemplate: string;
   onSaveTemplate: (newTemplate: string) => void;
   onReloadFromFile: () => Promise<void>;
+  currentAdsSettings: AdsSettings;
+  onSaveAdsSettings: (newSettings: AdsSettings) => void;
   onGeminiKeySaved?: (key: string) => void;
+  initialTab?: 'template' | 'ads' | 'gemini';
 }
 
 function TemplateSettingsDialog({
@@ -35,11 +50,25 @@ function TemplateSettingsDialog({
   currentTemplate,
   onSaveTemplate,
   onReloadFromFile,
+  currentAdsSettings,
+  onSaveAdsSettings,
   onGeminiKeySaved,
+  initialTab = 'template',
 }: Omit<TemplateSettingsModalProps, 'isOpen'>) {
-  const [activeTab, setActiveTab] = useState<'template' | 'gemini'>('template');
+  const [activeTab, setActiveTab] = useState<'template' | 'ads' | 'gemini'>(initialTab);
   const [templateText, setTemplateText] = useState(currentTemplate);
   const [isReloading, setIsReloading] = useState(false);
+
+  // Ads Settings State
+  const [adsDraft, setAdsDraft] = useState<AdsSettings>(() => ({
+    smartLink: { ...currentAdsSettings.smartLink },
+    directLink: { ...currentAdsSettings.directLink },
+    popupAd: { ...currentAdsSettings.popupAd },
+    bannerAd: { ...currentAdsSettings.bannerAd },
+    updatedAt: currentAdsSettings.updatedAt,
+  }));
+  const [adsError, setAdsError] = useState<string | null>(null);
+  const [adsStatus, setAdsStatus] = useState<string | null>(null);
 
   // Gemini Settings State
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
@@ -81,8 +110,49 @@ function TemplateSettingsDialog({
     setTemplateText((prev) => `${prev} ${tag}`);
   };
 
+  const validateDraftAds = (draft: AdsSettings): string | null => {
+    const smartRes = validateAdUrl(draft.smartLink.url);
+    if (!smartRes.valid) return `Smart Link URL: ${smartRes.error}`;
+    if (draft.smartLink.enabled && !smartRes.normalized) {
+      return 'Smart Link URL is enabled but empty. Enter a valid https:// URL or disable it.';
+    }
+
+    const directRes = validateAdUrl(draft.directLink.url);
+    if (!directRes.valid) return `Direct Link URL: ${directRes.error}`;
+    if (draft.directLink.enabled && !directRes.normalized) {
+      return 'Direct Link URL is enabled but empty. Enter a valid https:// URL or disable it.';
+    }
+
+    const popupRes = validateAdUrl(draft.popupAd.url);
+    if (!popupRes.valid) return `Pop-up Ad URL: ${popupRes.error}`;
+    if (draft.popupAd.enabled && !popupRes.normalized) {
+      return 'Pop-up Ad URL is enabled but empty. Enter a valid https:// URL or disable it.';
+    }
+
+    const bannerImgRes = validateAdUrl(draft.bannerAd.imageUrl);
+    if (!bannerImgRes.valid) return `Banner Image URL: ${bannerImgRes.error}`;
+    if (draft.bannerAd.enabled && !bannerImgRes.normalized) {
+      return 'Banner Ad is enabled but Banner Image URL is empty. Enter a valid image URL or disable it.';
+    }
+
+    const bannerClickRes = validateAdUrl(draft.bannerAd.clickUrl);
+    if (!bannerClickRes.valid) return `Banner Click URL: ${bannerClickRes.error}`;
+
+    return null;
+  };
+
   const handleSave = () => {
+    const validationError = validateDraftAds(adsDraft);
+    if (validationError) {
+      setAdsError(validationError);
+      setActiveTab('ads');
+      return;
+    }
+
+    setAdsError(null);
     onSaveTemplate(templateText);
+    onSaveAdsSettings(sanitizeAdsSettings(adsDraft));
+
     if (typeof window !== 'undefined') {
       const trimmedKey = geminiApiKey.trim();
       if (trimmedKey) {
@@ -96,6 +166,45 @@ function TemplateSettingsDialog({
       }
     }
     onClose();
+  };
+
+  const handleSaveAdsQuick = () => {
+    const validationError = validateDraftAds(adsDraft);
+    if (validationError) {
+      setAdsError(validationError);
+      setAdsStatus(null);
+      return;
+    }
+    setAdsError(null);
+    const saved = sanitizeAdsSettings(adsDraft);
+    setAdsDraft(saved);
+    onSaveAdsSettings(saved);
+    setAdsStatus('Ads settings saved and applied!');
+    setTimeout(() => setAdsStatus(null), 3000);
+  };
+
+  const handleResetAdsDefaults = () => {
+    setAdsError(null);
+    setAdsDraft({
+      smartLink: { ...DEFAULT_ADS_SETTINGS.smartLink },
+      directLink: { ...DEFAULT_ADS_SETTINGS.directLink },
+      popupAd: { ...DEFAULT_ADS_SETTINGS.popupAd },
+      bannerAd: { ...DEFAULT_ADS_SETTINGS.bannerAd },
+    });
+    setAdsStatus('Reset to default template ads (click Save to apply).');
+    setTimeout(() => setAdsStatus(null), 3000);
+  };
+
+  const handleClearAllAds = () => {
+    setAdsError(null);
+    setAdsDraft({
+      smartLink: { ...EMPTY_ADS_SETTINGS.smartLink },
+      directLink: { ...EMPTY_ADS_SETTINGS.directLink },
+      popupAd: { ...EMPTY_ADS_SETTINGS.popupAd },
+      bannerAd: { ...EMPTY_ADS_SETTINGS.bannerAd },
+    });
+    setAdsStatus('All ads cleared & disabled (click Save to apply).');
+    setTimeout(() => setAdsStatus(null), 3000);
   };
 
   const handleSaveGeminiKeyQuick = () => {
@@ -121,6 +230,13 @@ function TemplateSettingsDialog({
   const hasCaption = templateText.includes('{{CAPTION}}');
   const hasDate = templateText.includes('{{PUBLISHED_DATE}}');
 
+  const activeAdsCount = [
+    adsDraft.smartLink.enabled && adsDraft.smartLink.url.trim(),
+    adsDraft.directLink.enabled && adsDraft.directLink.url.trim(),
+    adsDraft.popupAd.enabled && adsDraft.popupAd.url.trim(),
+    adsDraft.bannerAd.enabled && adsDraft.bannerAd.imageUrl.trim(),
+  ].filter(Boolean).length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-slate-200">
@@ -133,7 +249,7 @@ function TemplateSettingsDialog({
                 Settings &amp; Configuration
               </h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Blogger Post Automation AI
+                Master Template, Separate Ads &amp; Gemini AI
               </p>
             </div>
           </div>
@@ -148,30 +264,42 @@ function TemplateSettingsDialog({
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex border-b border-slate-200 bg-white px-4 shrink-0 text-xs font-semibold">
+        <div className="flex border-b border-slate-200 bg-white px-4 shrink-0 text-xs font-semibold overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('template')}
-            className={`py-2.5 px-3 border-b-2 flex items-center space-x-1.5 transition-colors ${
+            className={`py-2.5 px-3 border-b-2 flex items-center space-x-1.5 transition-colors whitespace-nowrap ${
               activeTab === 'template'
                 ? 'border-orange-600 text-orange-600'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <Code className="w-3.5 h-3.5" />
-            <span>Master HTML Template</span>
+            <span>Master Template</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('ads')}
+            className={`py-2.5 px-3 border-b-2 flex items-center space-x-1.5 transition-colors whitespace-nowrap ${
+              activeTab === 'ads'
+                ? 'border-orange-600 text-orange-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Megaphone className="w-3.5 h-3.5" />
+            <span>Ads Settings ({activeAdsCount}/4)</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('gemini')}
-            className={`py-2.5 px-3 border-b-2 flex items-center space-x-1.5 transition-colors ${
+            className={`py-2.5 px-3 border-b-2 flex items-center space-x-1.5 transition-colors whitespace-nowrap ${
               activeTab === 'gemini'
                 ? 'border-orange-600 text-orange-600'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Gemini AI Key &amp; Language</span>
+            <span>Gemini AI</span>
           </button>
         </div>
 
@@ -288,6 +416,352 @@ function TemplateSettingsDialog({
                 </div>
               )}
             </>
+          ) : activeTab === 'ads' ? (
+            /* Separate Ads Management Tab */
+            <div className="space-y-3.5">
+              {/* Top Action Strip */}
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                    <Megaphone className="w-4 h-4 text-orange-600" />
+                    <span>App-Controlled Ads Management</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Strictly isolated from imported article HTML. Disabled or empty ads are never injected.
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleResetAdsDefaults}
+                    className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 flex items-center space-x-1"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Defaults</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearAllAds}
+                    className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 flex items-center space-x-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Clear All</span>
+                  </button>
+                </div>
+              </div>
+
+              {adsError && (
+                <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start space-x-2">
+                  <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                  <span>{adsError}</span>
+                </div>
+              )}
+
+              {adsStatus && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 flex items-center space-x-2 font-medium">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{adsStatus}</span>
+                </div>
+              )}
+
+              {/* 1. Smart Link URL */}
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                      <Link2 className="w-3.5 h-3.5 text-orange-600" />
+                      <span>Smart Link URL (Play Now)</span>
+                    </label>
+                    <p className="text-[10px] text-slate-500">Opens once on user click of Play Now (#btn1)</p>
+                  </div>
+                  <label className="inline-flex items-center cursor-pointer space-x-1.5">
+                    <input
+                      type="checkbox"
+                      checked={adsDraft.smartLink.enabled}
+                      onChange={(e) => {
+                        setAdsError(null);
+                        setAdsDraft((prev) => ({
+                          ...prev,
+                          smartLink: { ...prev.smartLink, enabled: e.target.checked },
+                        }));
+                      }}
+                      className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
+                    />
+                    <span className="text-[11px] font-semibold text-slate-700">
+                      {adsDraft.smartLink.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </label>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <input
+                    type="url"
+                    value={adsDraft.smartLink.url}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAdsError(null);
+                      setAdsDraft((prev) => ({
+                        ...prev,
+                        smartLink: {
+                          url: val,
+                          enabled: val.trim() ? prev.smartLink.enabled : false,
+                        },
+                      }));
+                    }}
+                    placeholder="https://example.com/smartlink?key=..."
+                    className="flex-1 text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  {adsDraft.smartLink.url && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAdsDraft((prev) => ({
+                          ...prev,
+                          smartLink: { enabled: false, url: '' },
+                        }))
+                      }
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-slate-200"
+                      title="Delete Smart Link"
+                      aria-label="Delete Smart Link"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. Direct Link URL */}
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                      <ExternalLink className="w-3.5 h-3.5 text-orange-600" />
+                      <span>Direct Link URL (Watch Now)</span>
+                    </label>
+                    <p className="text-[10px] text-slate-500">Opens cleanly on user click of Watch Now (#btn2)</p>
+                  </div>
+                  <label className="inline-flex items-center cursor-pointer space-x-1.5">
+                    <input
+                      type="checkbox"
+                      checked={adsDraft.directLink.enabled}
+                      onChange={(e) => {
+                        setAdsError(null);
+                        setAdsDraft((prev) => ({
+                          ...prev,
+                          directLink: { ...prev.directLink, enabled: e.target.checked },
+                        }));
+                      }}
+                      className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
+                    />
+                    <span className="text-[11px] font-semibold text-slate-700">
+                      {adsDraft.directLink.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </label>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <input
+                    type="url"
+                    value={adsDraft.directLink.url}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAdsError(null);
+                      setAdsDraft((prev) => ({
+                        ...prev,
+                        directLink: {
+                          url: val,
+                          enabled: val.trim() ? prev.directLink.enabled : false,
+                        },
+                      }));
+                    }}
+                    placeholder="https://example.com/directlink?key=..."
+                    className="flex-1 text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  {adsDraft.directLink.url && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAdsDraft((prev) => ({
+                          ...prev,
+                          directLink: { enabled: false, url: '' },
+                        }))
+                      }
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-slate-200"
+                      title="Delete Direct Link"
+                      aria-label="Delete Direct Link"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Pop-up Ad URL */}
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-orange-600" />
+                      <span>Pop-up Ad URL</span>
+                    </label>
+                    <p className="text-[10px] text-slate-500">
+                      Supports ad network <code className="font-mono">.js</code> script URLs or click-triggered destination URLs
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center cursor-pointer space-x-1.5">
+                    <input
+                      type="checkbox"
+                      checked={adsDraft.popupAd.enabled}
+                      onChange={(e) => {
+                        setAdsError(null);
+                        setAdsDraft((prev) => ({
+                          ...prev,
+                          popupAd: { ...prev.popupAd, enabled: e.target.checked },
+                        }));
+                      }}
+                      className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
+                    />
+                    <span className="text-[11px] font-semibold text-slate-700">
+                      {adsDraft.popupAd.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </label>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <input
+                    type="url"
+                    value={adsDraft.popupAd.url}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAdsError(null);
+                      setAdsDraft((prev) => ({
+                        ...prev,
+                        popupAd: {
+                          url: val,
+                          enabled: val.trim() ? prev.popupAd.enabled : false,
+                        },
+                      }));
+                    }}
+                    placeholder="https://cdn.example.com/popunder.js or https://..."
+                    className="flex-1 text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  {adsDraft.popupAd.url && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAdsDraft((prev) => ({
+                          ...prev,
+                          popupAd: { enabled: false, url: '' },
+                        }))
+                      }
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-slate-200"
+                      title="Delete Pop-up Ad"
+                      aria-label="Delete Pop-up Ad"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 4. Banner Image URL + Banner Click URL */}
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-orange-600" />
+                      <span>Custom Banner Ad (Bottom Slot)</span>
+                    </label>
+                    <p className="text-[10px] text-slate-500">
+                      Rendered cleanly in bottom banner slot so Main Image stays Blogger&apos;s primary thumbnail
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center cursor-pointer space-x-1.5">
+                    <input
+                      type="checkbox"
+                      checked={adsDraft.bannerAd.enabled}
+                      onChange={(e) => {
+                        setAdsError(null);
+                        setAdsDraft((prev) => ({
+                          ...prev,
+                          bannerAd: { ...prev.bannerAd, enabled: e.target.checked },
+                        }));
+                      }}
+                      className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
+                    />
+                    <span className="text-[11px] font-semibold text-slate-700">
+                      {adsDraft.bannerAd.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="space-y-2">
+                  <div>
+                    <span className="block text-[10px] font-semibold text-slate-600 mb-1">Banner Image URL</span>
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="url"
+                        value={adsDraft.bannerAd.imageUrl}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setAdsError(null);
+                          setAdsDraft((prev) => ({
+                            ...prev,
+                            bannerAd: {
+                              ...prev.bannerAd,
+                              imageUrl: val,
+                              enabled: val.trim() ? prev.bannerAd.enabled : false,
+                            },
+                          }));
+                        }}
+                        placeholder="https://cdn.example.com/banner-728x90.jpg"
+                        className="flex-1 text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                      {adsDraft.bannerAd.imageUrl && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAdsDraft((prev) => ({
+                              ...prev,
+                              bannerAd: { enabled: false, imageUrl: '', clickUrl: '' },
+                            }))
+                          }
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-slate-200"
+                          title="Delete Banner Ad"
+                          aria-label="Delete Banner Ad"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="block text-[10px] font-semibold text-slate-600 mb-1">Banner Click URL (Optional)</span>
+                    <input
+                      type="url"
+                      value={adsDraft.bannerAd.clickUrl}
+                      onChange={(e) => {
+                        setAdsError(null);
+                        setAdsDraft((prev) => ({
+                          ...prev,
+                          bannerAd: { ...prev.bannerAd, clickUrl: e.target.value },
+                        }));
+                      }}
+                      placeholder="https://sponsor-destination.com/offer"
+                      className="w-full text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveAdsQuick}
+                  className="text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl"
+                >
+                  Apply Ads Settings Now
+                </button>
+              </div>
+            </div>
           ) : (
             /* Gemini AI Key & Language Tab */
             <div className="space-y-4">
@@ -408,7 +882,7 @@ function TemplateSettingsDialog({
             onClick={handleSave}
             className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-5 rounded-xl text-xs shadow-sm shadow-orange-600/20"
           >
-            Save Changes
+            Save All Changes
           </button>
         </div>
       </div>
@@ -422,7 +896,10 @@ export function TemplateSettingsModal({
   currentTemplate,
   onSaveTemplate,
   onReloadFromFile,
+  currentAdsSettings,
+  onSaveAdsSettings,
   onGeminiKeySaved,
+  initialTab,
 }: TemplateSettingsModalProps) {
   if (!isOpen) return null;
 
@@ -432,7 +909,10 @@ export function TemplateSettingsModal({
       currentTemplate={currentTemplate}
       onSaveTemplate={onSaveTemplate}
       onReloadFromFile={onReloadFromFile}
+      currentAdsSettings={currentAdsSettings}
+      onSaveAdsSettings={onSaveAdsSettings}
       onGeminiKeySaved={onGeminiKeySaved}
+      initialTab={initialTab}
     />
   );
 }

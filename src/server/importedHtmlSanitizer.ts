@@ -73,8 +73,6 @@ const REMOVE_COMPLETELY_SELECTOR = [
   'option',
   'svg',
   'canvas',
-  'audio',
-  'video',
   'track',
   'map',
   'area',
@@ -85,6 +83,9 @@ const REMOVE_COMPLETELY_SELECTOR = [
   'title',
   'head',
   'ins.adsbygoogle',
+  '[data-ad-client]',
+  '[data-ad-slot]',
+  '[data-app-ad]',
 ].join(', ');
 
 const ALLOWED_TAGS = new Set([
@@ -129,6 +130,8 @@ const ALLOWED_TAGS = new Set([
   'time',
   'a',
   'img',
+  'video',
+  'audio',
   'table',
   'thead',
   'tbody',
@@ -618,11 +621,13 @@ export function sanitizeImportedHtml(
     const ariaVal = ($el.attr('aria-label') || '').trim();
 
     const hasAdAttr =
-      $el.attr('data-ad-client') !== undefined || $el.attr('data-ad-slot') !== undefined;
+      $el.attr('data-ad-client') !== undefined ||
+      $el.attr('data-ad-slot') !== undefined ||
+      $el.attr('data-app-ad') !== undefined;
     const isStrictAdOrPlayerWidget =
       hasAdAttr ||
       PLAYER_OR_AD_CONTAINER_ID_REGEX.test(idVal) ||
-      /(^|\s)(video-container|controls|play-icon|loading-screen|adsbygoogle|adsterra|effectivecpmnetwork)(\s|$)/i.test(
+      /(^|\s)(video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|live-viewer-badge|scroll-indicator-wrap|related-section|ad-slot-wrapper|ad-fallback|adsbygoogle|adsterra|effectivecpmnetwork)(\s|$)/i.test(
         classVal
       );
 
@@ -637,6 +642,32 @@ export function sanitizeImportedHtml(
         $el.remove();
       }
     }
+  });
+
+  // 3b. Clean article <video>/<audio> elements (strip ad/empty/malicious media, preserve legitimate media with safe controls)
+  $root.find('video, audio').each((_, mediaEl) => {
+    const $media = $(mediaEl);
+    const rawSrc =
+      $media.attr('src') ||
+      $media.find('source[src]').first().attr('src') ||
+      '';
+    const cleanSrc = cleanEditorialHref(rawSrc, baseUrl);
+    if (!cleanSrc || isAffiliateOrAdHref(cleanSrc)) {
+      $media.remove();
+      return;
+    }
+    const rawPoster = $media.attr('poster') || '';
+    const cleanPoster = rawPoster ? normalizeImageUrl(rawPoster, baseUrl) : null;
+    for (const attr of Object.keys(mediaEl.attribs || {})) {
+      $media.removeAttr(attr);
+    }
+    $media.attr('src', cleanSrc);
+    $media.attr('controls', 'controls');
+    $media.attr('preload', 'metadata');
+    if (cleanPoster && !isTrackingOrAdImageUrl(cleanPoster)) {
+      $media.attr('poster', cleanPoster);
+    }
+    $media.find('source').remove();
   });
 
   // 4. Convert Blogger image caption tables (table.tr-caption-container) into clean <figure>
@@ -727,23 +758,28 @@ export function sanitizeImportedHtml(
       return;
     }
 
-    // Promotional banner detection (conservative: NEVER remove genuine article images)
+    // Promotional/clickable ad banner detection (removes ad banners completely while preserving genuine article images)
     const parentAnchor = $img.closest('a');
     const parentHref = parentAnchor.length ? parentAnchor.attr('href') || '' : '';
+    const cleanedParentHref = parentHref ? cleanEditorialHref(parentHref, baseUrl) || parentHref : '';
     const altText = ($img.attr('alt') || '').trim();
     const titleText = ($img.attr('title') || '').trim();
-    const isTinyBannerButton =
-      attrWidth !== undefined && attrHeight !== undefined && attrWidth <= 180 && attrHeight <= 60;
+    const isBannerDimensions =
+      (attrWidth !== undefined && attrHeight !== undefined && attrWidth <= 180 && attrHeight <= 60) ||
+      (attrWidth === 728 && attrHeight === 90) ||
+      (attrWidth === 300 && attrHeight === 250) ||
+      (attrWidth === 468 && attrHeight === 60) ||
+      (attrWidth === 320 && attrHeight === 50) ||
+      (attrWidth === 160 && attrHeight === 600);
     const isPromoFilename =
       /(buy[-_]?now|shop[-_]?now|download[-_]?btn|subscribe[-_]?banner|ad[-_]?banner|728x90|300x250|468x60|160x600|320x50)/i.test(
         `${resolvedSrc} ${altText}`
       );
 
     if (
-      !isGenuineContentCdnUrl(resolvedSrc) &&
       parentHref &&
-      isAffiliateOrAdHref(parentHref) &&
-      (isTinyBannerButton || isPromoFilename)
+      isAffiliateOrAdHref(cleanedParentHref) &&
+      (isBannerDimensions || isPromoFilename || !isGenuineContentCdnUrl(resolvedSrc))
     ) {
       $img.remove();
       return;
@@ -816,7 +852,6 @@ export function sanitizeImportedHtml(
     // Remove popup/inline-JS anchors or CTA-only anchors pointing to javascript:/#
     const cleanedHref = cleanEditorialHref(rawHref, baseUrl);
     if (
-      hasInlineEventHandler ||
       !cleanedHref ||
       isAffiliateOrAdHref(cleanedHref) ||
       isExternalBloggerSiteHref(cleanedHref, sourceBlogHost)
@@ -824,7 +859,7 @@ export function sanitizeImportedHtml(
       if (
         !textContent ||
         PROMO_CTA_TEXT_REGEX.test(textContent) ||
-        hasInlineEventHandler
+        (!cleanedHref && hasInlineEventHandler)
       ) {
         $a.remove();
       } else {
@@ -840,7 +875,7 @@ export function sanitizeImportedHtml(
       return;
     }
 
-    // Strip all unsafe/unnecessary attributes from kept editorial <a>
+    // Strip all unsafe/unnecessary attributes (including onclick/ping) from kept editorial <a>
     for (const attr of Object.keys(anchorEl.attribs || {})) {
       $a.removeAttr(attr);
     }
@@ -886,6 +921,9 @@ export function sanitizeImportedHtml(
       if ((tag === 'th' || tag === 'td') && ['colspan', 'rowspan'].includes(lowerAttr)) {
         continue;
       }
+      if ((tag === 'video' || tag === 'audio') && ['src', 'controls', 'preload', 'poster'].includes(lowerAttr)) {
+        continue;
+      }
       if (tag === 'ol' && ['start', 'type'].includes(lowerAttr)) {
         continue;
       }
@@ -897,13 +935,13 @@ export function sanitizeImportedHtml(
   });
 
   // 10. Remove leftover foreign template overlay noise & empty elements bottom-up
-  const voidOrSelfContent = new Set(['img', 'br', 'hr']);
+  const voidOrSelfContent = new Set(['img', 'br', 'hr', 'video', 'audio']);
   const elementsForPruning = $root.find('*').toArray().reverse();
   for (const el of elementsForPruning) {
     const tag = el.tagName?.toLowerCase() || '';
     if (voidOrSelfContent.has(tag)) continue;
     const $el = $(el);
-    if ($el.find('img, hr').length > 0) continue;
+    if ($el.find('img, hr, video, audio').length > 0) continue;
     const rawText = $el.text().replace(/\s+/g, ' ').trim();
     if (rawText && FOREIGN_TEMPLATE_NOISE_TEXT_REGEX.test(rawText)) {
       $el.remove();

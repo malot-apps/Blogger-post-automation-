@@ -7,6 +7,7 @@ import { uploadAndVerifyImageOnBloggerHost } from '@/src/server/bloggerImageHost
 import { sanitizeImportedHtml, decodeHtmlEntities } from '@/src/server/importedHtmlSanitizer';
 import { resolveAndVerifyImportedArticleImages } from '@/src/server/importedImageResolver';
 import { selectMainThumbnailImage, isPngImageUrl } from '@/src/lib/mainImageSelector';
+import { sanitizeAdsSettings, isLegacyDefaultTemplate } from '@/src/lib/adsSettings';
 
 /**
  * ARCHITECTURAL COMMENT #1:
@@ -80,8 +81,15 @@ export async function POST(req: NextRequest) {
       title,
       labels,
       customTemplate,
+      adsSettings,
       isDraft,
     } = body;
+
+    const validatedAdsSettings = adsSettings ? sanitizeAdsSettings(adsSettings) : undefined;
+    const effectiveTemplateInput =
+      typeof customTemplate === 'string' && !isLegacyDefaultTemplate(customTemplate)
+        ? customTemplate
+        : undefined;
 
     if (!blogId || typeof blogId !== 'string') {
       return NextResponse.json(
@@ -177,7 +185,7 @@ export async function POST(req: NextRequest) {
       const selectedImgMeta =
         resolved.imageDetails.find((img) => img.src === primaryImg) ||
         sanitized.images.find((img) => img.src === primaryImg);
-      const templatedPostHtml = renderImportedTemplate(customTemplate, {
+      const templatedPostHtml = renderImportedTemplate(effectiveTemplateInput, {
         title: finalImportedTitle,
         articleHtml: resolved.html,
         imageUrl: primaryImg,
@@ -189,7 +197,7 @@ export async function POST(req: NextRequest) {
           typeof body.publishedDate === 'string' && body.publishedDate.trim().length > 0
             ? body.publishedDate.trim()
             : undefined,
-      });
+      }, validatedAdsSettings);
 
       const publishedPost = await createAndPublishBloggerPost(token, {
         blogId,
@@ -288,12 +296,12 @@ export async function POST(req: NextRequest) {
       : generateTitleFromCaption(caption);
 
     // Step 6: Render /templates/blogger-post-template.html using Main Post Image ({{IMAGE_URL}}) as thumbnail
-    const postHtml = renderTemplate(customTemplate, {
+    const postHtml = renderTemplate(effectiveTemplateInput, {
       title: finalTitle,
       imageUrl: verifiedMainImageUrl,
       thumbnailUrl: verifiedMainImageUrl,
       caption: caption.trim(),
-    });
+    }, validatedAdsSettings);
 
     // Step 7: Call Blogger API v3 to create and publish post to THAT USER's selected blog
     const publishedPost = await createAndPublishBloggerPost(token, {

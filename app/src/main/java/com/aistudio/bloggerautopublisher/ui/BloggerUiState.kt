@@ -1,6 +1,7 @@
 package com.aistudio.bloggerautopublisher.ui
 
 import android.net.Uri
+import com.aistudio.bloggerautopublisher.model.AdsSettings
 import com.aistudio.bloggerautopublisher.model.AiAnalysisResult
 import com.aistudio.bloggerautopublisher.model.BloggerBlog
 import com.aistudio.bloggerautopublisher.model.CompositionStyle
@@ -47,8 +48,9 @@ data class BloggerUiState(
     val geminiApiKey: String = "",
     val aiError: String? = null,
 
-    // Master Template
+    // Master Template & Ads Settings
     val customTemplate: String = "",
+    val adsSettings: AdsSettings = AdsSettings.DEFAULT,
 
     // Dialogs / Modals
     val isPreviewOpen: Boolean = false,
