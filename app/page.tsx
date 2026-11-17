@@ -17,6 +17,7 @@ import {
 } from '@/src/lib/firebase';
 import type { BloggerBlog } from '@/src/server/bloggerService';
 import { DEFAULT_MASTER_TEMPLATE } from '@/src/templates/BloggerPostTemplate';
+import { deduplicateAdScriptsAndContainers } from '@/src/lib/importedHtmlCleaner';
 import { generateTitleFromCaption } from '@/src/lib/titleGenerator';
 import type { ImageProcessingResult } from '@/src/lib/imageUtils';
 
@@ -64,9 +65,11 @@ export default function Home() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY_TEMPLATE);
       if (saved) {
-        const migrated = saved
-          .replace(/id="videoThumbnail" src="\{\{THUMBNAIL_URL\}\}"/g, 'id="videoThumbnail" src="{{IMAGE_URL}}"')
-          .replace(/CUSTOM_THUMBNAIL_URL = "\{\{THUMBNAIL_URL\}\}";/g, 'CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";');
+        const migrated = deduplicateAdScriptsAndContainers(
+          saved
+            .replace(/id="videoThumbnail" src="\{\{THUMBNAIL_URL\}\}"/g, 'id="videoThumbnail" src="{{IMAGE_URL}}"')
+            .replace(/CUSTOM_THUMBNAIL_URL = "\{\{THUMBNAIL_URL\}\}";/g, 'CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";')
+        );
         if (migrated !== saved) {
           try {
             localStorage.setItem(STORAGE_KEY_TEMPLATE, migrated);
@@ -287,9 +290,10 @@ export default function Home() {
 
   // Save custom template handler
   const handleSaveTemplate = (newTemplate: string) => {
-    setCustomTemplate(newTemplate);
+    const cleaned = deduplicateAdScriptsAndContainers(newTemplate);
+    setCustomTemplate(cleaned);
     try {
-      localStorage.setItem(STORAGE_KEY_TEMPLATE, newTemplate);
+      localStorage.setItem(STORAGE_KEY_TEMPLATE, cleaned);
     } catch {
       // ignore
     }

@@ -22,6 +22,7 @@ import type { ImportedPostItem } from '@/src/server/bloggerService';
 import { getAccessToken } from '@/src/lib/firebase';
 import { renderImportedPostTemplate } from '@/src/templates/BloggerPostTemplate';
 import { selectMainThumbnailImage, isPngImageUrl } from '@/src/lib/mainImageSelector';
+import { sanitizeImportedArticleFragment } from '@/src/lib/importedHtmlCleaner';
 
 interface ImportPostsModalProps {
   isOpen: boolean;
@@ -720,7 +721,11 @@ export function ImportPostsModal({
               {/* Rendered Preview Area */}
               {(() => {
                 const activeTitle = aiEnhancedTitle || previewingPost.title;
-                const activeArticleHtml = aiEnhancedContent || previewingPost.content;
+                const activeSourceUrl = previewingPost.url || blogMeta?.url;
+                const activeArticleHtml = sanitizeImportedArticleFragment(
+                  aiEnhancedContent || previewingPost.content,
+                  { baseUrl: activeSourceUrl }
+                );
                 const primaryImage =
                   selectMainThumbnailImage(previewingPost.imageDetails || previewingPost.images) ||
                   (!isPngImageUrl(previewingPost.thumbnailUrl) ? previewingPost.thumbnailUrl : '') ||
@@ -735,6 +740,7 @@ export function ImportPostsModal({
                   thumbnailUrl: primaryImage,
                   firstImageAlt: selectedDetail?.alt,
                   firstImageSrcset: selectedDetail?.srcset,
+                  sourceUrl: activeSourceUrl,
                   publishedDate: previewingPost.published
                     ? new Date(previewingPost.published).toLocaleString('en-US', {
                         dateStyle: 'medium',

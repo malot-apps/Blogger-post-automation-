@@ -1,6 +1,8 @@
 package com.aistudio.bloggerautopublisher.template
 
+import com.aistudio.bloggerautopublisher.util.ImportedHtmlSanitizer
 import com.aistudio.bloggerautopublisher.util.MainImageSelector
+import com.aistudio.bloggerautopublisher.util.ThumbnailCandidate
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -12,7 +14,9 @@ object BloggerTemplateEngine {
 
 <html lang="en">
 <head>
+  
   <script src="https://pl30161573.effectivecpmnetwork.com/bc/17/d1/bc17d177bcada949929a7511850a6cf0.js"></script>
+
   <meta charset="UTF-8">
   <meta content="width=device-width, initial-scale=1.0" name="viewport">
   <title>{{TITLE}}</title>
@@ -23,6 +27,7 @@ object BloggerTemplateEngine {
       margin: 0 auto;
       padding: 20px;
     }
+    
     .video-container {
       position: relative;
       width: 100%;
@@ -33,12 +38,14 @@ object BloggerTemplateEngine {
       border-radius: 8px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     }
+    
     #videoThumbnail {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
     }
+    
     .play-icon {
       position: absolute;
       top: 50%;
@@ -51,9 +58,11 @@ object BloggerTemplateEngine {
       transition: all 0.3s;
       z-index: 10;
     }
+    
     .play-icon.loading {
       animation: pulseSpin 1.5s ease-in-out infinite;
     }
+    
     .controls {
       display: flex;
       justify-content: center;
@@ -61,6 +70,7 @@ object BloggerTemplateEngine {
       margin: 25px 0;
       flex-wrap: wrap;
     }
+    
     button {
       padding: 12px 25px;
       background: linear-gradient(135deg, #6e8efb, #a777e3);
@@ -73,15 +83,24 @@ object BloggerTemplateEngine {
       transition: all 0.3s;
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     }
+    
     button:hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
     }
+    
     @keyframes pulseSpin {
-      0% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
-      50% { transform: translate(-50%, -50%) scale(1.1) rotate(180deg); }
-      100% { transform: translate(-50%, -50%) scale(1.1) rotate(360deg); }
+      0% {
+        transform: translate(-50%, -50%) scale(1) rotate(0deg);
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.1) rotate(180deg);
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(1) rotate(360deg);
+      }
     }
+    
     .loading-screen {
       position: absolute;
       top: 0;
@@ -114,34 +133,75 @@ object BloggerTemplateEngine {
   </div>
 
   <script>
+    // Configuration
     const CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";
+    
+    // Main ad link
     const MAIN_AD_LINK = 'https://cheflobesofficer.com/b1b9djat?key=a45917b862f040650d5da9b0f6ceac52';
-    const LINKS = ['https://www.effectivecpmnetwork.com/b1b9djat?key=a45917b862f040650d5da9b0f6ceac52'];
+    
+    // Array of links to be opened.
+    const LINKS = [
+      'https://www.effectivecpmnetwork.com/b1b9djat?key=a45917b862f040650d5da9b0f6ceac52'
+    ];
+    
+    // Elements
     const playIcon = document.getElementById('playIcon');
     const loadingScreen = document.getElementById('loadingScreen');
     const videoThumbnail = document.getElementById('videoThumbnail');
+    
+    // Flag to ensure the main ad link only opens once per action
     let mainAdOpened = false;
+    
+    // Interval ID for repeating link openings.
     let intervalId = null;
-
-    function init() { if (CUSTOM_THUMBNAIL_URL && videoThumbnail) { videoThumbnail.src = CUSTOM_THUMBNAIL_URL; } }
+    
+    // Initialize the thumbnail with the main post image URL.
+    function init() {
+      if (CUSTOM_THUMBNAIL_URL && videoThumbnail) {
+        videoThumbnail.src = CUSTOM_THUMBNAIL_URL;
+      }
+    }
+    
+    // Smart opener: tries popup first, falls back to redirect if blocked
     function openSmartLink(url, name) {
       const w = window.open(url, name, 'width=800,height=600,menubar=no,toolbar=no');
-      if (!w || w.closed || typeof w.closed == 'undefined') { window.location.href = url; }
+      if (!w || w.closed || typeof w.closed == 'undefined') {
+        // Popup blocked → redirect in same tab
+        window.location.href = url;
+      }
     }
+    
+    // Handles the action to simulate video loading and open links.
     function handleAction() {
+      // Start loading simulation.
       playIcon.classList.add('loading');
       loadingScreen.style.display = 'flex';
+      
+      // Reset the flag for this new action
       mainAdOpened = false;
+      
+      // 1) Open the main adsterra link after 5 seconds (popup first, then fallback redirect)
       setTimeout(function() {
-        if (!mainAdOpened) { mainAdOpened = true; openSmartLink(MAIN_AD_LINK, 'main_ad'); }
+        if (!mainAdOpened) {
+          mainAdOpened = true;
+          openSmartLink(MAIN_AD_LINK, 'main_ad');
+        }
       }, 5000);
+      
+      // 2) Open the LINKS array with 2-second delay between each.
       LINKS.forEach((link, index) => {
         setTimeout(() => {
           const newWindow = window.open(link, 'premium_' + index, 'width=800,height=600,menubar=no,toolbar=no');
-          if (!newWindow) { alert('Please allow pop-ups for this site'); }
+          if (!newWindow) {
+            alert('Please allow pop-ups for this site | ভিডিওটি চালু করতে Always Show Button ক্লিক করুন।');
+          }
         }, index * 2000);
       });
+      
+      // Clear any existing interval.
       if (intervalId) clearInterval(intervalId);
+      
+      // Set new interval for repeating link openings (every 15 seconds).
       intervalId = setInterval(() => {
         LINKS.forEach((link, index) => {
           setTimeout(() => {
@@ -149,18 +209,85 @@ object BloggerTemplateEngine {
           }, index * 2000);
         });
       }, 15000);
+      
+      // Ensure minimum 5-second loading animation.
       setTimeout(() => {
         playIcon.classList.remove('loading');
         loadingScreen.style.display = 'none';
       }, 5000);
     }
-    document.querySelectorAll('.controls button').forEach(b => b.addEventListener('click', handleAction));
+    
+    // Event listeners for control buttons.
+    document.querySelectorAll('.controls button').forEach(button => {
+      button.addEventListener('click', handleAction);
+    });
+    
+    // Added event listener for play icon click.
     playIcon.addEventListener('click', handleAction);
+    
+    // Initialize on page load.
     init();
   </script>
+  
+  <script>
+  atOptions = {
+    'key' : '36d19f913897a5c30f86205584612f58',
+    'format' : 'iframe',
+    'height' : 90,
+    'width' : 728,
+    'params' : {}
+  };
+  </script>
+  <script src="https://www.highperformanceformat.com/36d19f913897a5c30f86205584612f58/invoke.js"></script>
+  
+  <script async="async" data-cfasync="false" src="https://pl30160056.effectivecpmnetwork.com/390299b40362a820b12f3db553aff06f/invoke.js"></script>
+  <div id="container-390299b40362a820b12f3db553aff06f"></div>
+  
+  <script src="https://pl30160054.effectivecpmnetwork.com/44/86/88/448688bfd2ba5f19d655439d50b8ea0b.js"></script>
+  
 </body>
 </html>
 """.trimIndent()
+
+    private const val IMPORTED_ARTICLE_SCOPED_CSS = """
+    .imported-article-content {
+      display: block;
+      padding: 1em 0px;
+      text-align: left;
+      line-height: 1.75;
+      max-width: 100%;
+      overflow-wrap: break-word;
+      color: inherit;
+    }
+    .imported-article-content h1,
+    .imported-article-content h2,
+    .imported-article-content h3,
+    .imported-article-content h4 {
+      margin: 1.1em 0 0.5em;
+      line-height: 1.35;
+    }
+    .imported-article-content p {
+      margin: 0.75em 0;
+    }
+    .imported-article-content ul,
+    .imported-article-content ol {
+      margin: 0.75em 0;
+      padding-left: 1.5em;
+    }
+    .imported-article-content blockquote {
+      margin: 1em 0;
+      padding: 0.5em 1em;
+      border-left: 4px solid #6e8efb;
+      background: rgba(0, 0, 0, 0.03);
+    }
+    .imported-article-content img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 12px auto;
+      border-radius: 6px;
+    }
+"""
 
     fun escapeHtml(text: String): String {
         return text
@@ -182,6 +309,119 @@ object BloggerTemplateEngine {
 
     private fun normalizeComparableUrl(url: String): String {
         return url.trim().replace("&amp;", "&", ignoreCase = true)
+    }
+
+    fun deduplicateAdScriptsAndContainers(html: String): String {
+        if (html.isBlank()) return html
+
+        val seenScriptSrcs = HashSet<String>()
+        val seenContainerIds = HashSet<String>()
+        var seenPlayerConfig = false
+
+        val scriptWithOptionalAtOptionsRx = Regex(
+            "(?:<script\\b(?![^>]*\\bsrc=)[^>]*>\\s*atOptions\\s*=[\\s\\S]*?</script>\\s*)?<script\\b([^>]*\\bsrc\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')[^>]*)>[\\s\\S]*?</script>",
+            RegexOption.IGNORE_CASE
+        )
+
+        var output = scriptWithOptionalAtOptionsRx.replace(html) { match ->
+            val rawSrc = match.groupValues[2].ifEmpty { match.groupValues[3] }.trim()
+            val normSrc = rawSrc.replace("&amp;", "&", ignoreCase = true).lowercase(Locale.US)
+            if (normSrc.isEmpty() || seenScriptSrcs.add(normSrc)) {
+                match.value
+            } else {
+                ""
+            }
+        }
+
+        val containerDivRx = Regex(
+            "<div\\b[^>]*\\bid\\s*=\\s*(?:\"(container-[^\"]+)\"|'(container-[^']+)')[^>]*>\\s*</div>",
+            RegexOption.IGNORE_CASE
+        )
+        output = containerDivRx.replace(output) { match ->
+            val containerId = match.groupValues[1].ifEmpty { match.groupValues[2] }.trim().lowercase(Locale.US)
+            if (containerId.isEmpty() || seenContainerIds.add(containerId)) {
+                match.value
+            } else {
+                ""
+            }
+        }
+
+        val playerConfigRx = Regex(
+            "<script\\b(?![^>]*\\bsrc=)[^>]*>[\\s\\S]*?\\bMAIN_AD_LINK\\b[\\s\\S]*?</script>",
+            RegexOption.IGNORE_CASE
+        )
+        output = playerConfigRx.replace(output) { match ->
+            if (!seenPlayerConfig) {
+                seenPlayerConfig = true
+                match.value
+            } else {
+                ""
+            }
+        }
+
+        return output.replace(Regex("\\n{3,}"), "\n\n").trim()
+    }
+
+    fun ensureMasterAdConfiguration(
+        candidateHtml: String,
+        masterTemplate: String = DEFAULT_MASTER_TEMPLATE
+    ): String {
+        var output = candidateHtml
+
+        // 1. Ensure <head> ad script from Master Template
+        val headMatch = Regex("<head\\b[^>]*>([\\s\\S]*?)</head>", RegexOption.IGNORE_CASE).find(masterTemplate)
+        val headContent = headMatch?.groupValues?.getOrElse(1) { "" }.orEmpty()
+        val headScripts = Regex("<script\\b[^>]*\\bsrc\\s*=\\s*[\"']([^\"']+)[\"'][^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE)
+            .findAll(headContent)
+            .toList()
+        for (hs in headScripts) {
+            val headSrc = hs.groupValues[1]
+            if (headSrc.isNotBlank() && !output.contains(headSrc)) {
+                output = if (Regex("<head\\b[^>]*>", RegexOption.IGNORE_CASE).containsMatchIn(output)) {
+                    Regex("<head\\b[^>]*>", RegexOption.IGNORE_CASE).replaceFirst(output) { m -> "${m.value}\n  ${hs.value}" }
+                } else {
+                    "${hs.value}\n$output"
+                }
+            }
+        }
+
+        // 2. Ensure Master MAIN_AD_LINK / LINKS script
+        val playerConfigMatch = Regex(
+            "<script\\b(?![^>]*\\bsrc=)[^>]*>[\\s\\S]*?\\bMAIN_AD_LINK\\b[\\s\\S]*?</script>",
+            RegexOption.IGNORE_CASE
+        ).find(masterTemplate)
+        if (playerConfigMatch != null && !Regex("\\bMAIN_AD_LINK\\b").containsMatchIn(output)) {
+            output = if (Regex("</body>", RegexOption.IGNORE_CASE).containsMatchIn(output)) {
+                Regex("</body>", RegexOption.IGNORE_CASE).replaceFirst(output, "  ${playerConfigMatch.value}\n</body>")
+            } else {
+                "$output\n${playerConfigMatch.value}"
+            }
+        }
+
+        // 3. Ensure Master body banner/native ad scripts & containers
+        val bodyMatch = Regex("<body\\b[^>]*>([\\s\\S]*?)</body>", RegexOption.IGNORE_CASE).find(masterTemplate)
+        val bodyContent = bodyMatch?.groupValues?.getOrElse(1) { masterTemplate } ?: masterTemplate
+        val bodyAdRx = Regex(
+            "(?:<script\\b(?![^>]*\\bsrc=)[^>]*>\\s*atOptions\\s*=[\\s\\S]*?</script>\\s*)?<script\\b[^>]*\\bsrc\\s*=\\s*[\"']([^\"']+)[\"'][^>]*>[\\s\\S]*?</script>(?:\\s*<div\\b[^>]*\\bid\\s*=\\s*[\"']container-[^\"']+[\"'][^>]*>\\s*</div>)?",
+            RegexOption.IGNORE_CASE
+        )
+        val missingSnippets = mutableListOf<String>()
+        for (bm in bodyAdRx.findAll(bodyContent)) {
+            val scriptSrc = bm.groupValues[1]
+            if (scriptSrc.isNotBlank() && !output.contains(scriptSrc)) {
+                missingSnippets.add(bm.value.trim())
+            }
+        }
+        if (missingSnippets.isNotEmpty()) {
+            val block = missingSnippets.joinToString("\n  ")
+            output = if (Regex("</body>", RegexOption.IGNORE_CASE).containsMatchIn(output)) {
+                Regex("</body>", RegexOption.IGNORE_CASE).replaceFirst(output, "  $block\n</body>")
+            } else {
+                "$output\n$block"
+            }
+        }
+
+        return deduplicateAdScriptsAndContainers(output)
     }
 
     fun ensureMainImageFirstInPostHtml(
@@ -232,7 +472,11 @@ object BloggerTemplateEngine {
         caption: String,
         publishedDate: String? = null
     ): String {
-        val safeTemplate = if (!template.isNullOrBlank()) template else DEFAULT_MASTER_TEMPLATE
+        val safeTemplate = if (!template.isNullOrBlank()) {
+            deduplicateAdScriptsAndContainers(template)
+        } else {
+            DEFAULT_MASTER_TEMPLATE
+        }
         var safeImageUrl = sanitizeUrl(imageUrl)
         if (safeImageUrl.isEmpty() || MainImageSelector.isPngImageUrl(safeImageUrl)) {
             val recoveredFromTemplate = MainImageSelector.selectMainThumbnailImageFromHtml(safeTemplate)
@@ -253,6 +497,101 @@ object BloggerTemplateEngine {
             .replace("{{CAPTION}}", formattedCaption)
             .replace("{{PUBLISHED_DATE}}", formattedDate)
 
-        return ensureMainImageFirstInPostHtml(rendered, safeImageUrl, title)
+        val secured = ensureMasterAdConfiguration(rendered, DEFAULT_MASTER_TEMPLATE)
+        return ensureMainImageFirstInPostHtml(secured, safeImageUrl, title)
+    }
+
+    /**
+     * Sanitizes imported article HTML BEFORE merging with the Master HTML Template,
+     * guarantees ONLY Master Template ad links/scripts are active, and ensures JPG main image comes first.
+     */
+    fun renderImportedTemplate(
+        template: String?,
+        title: String,
+        articleHtml: String,
+        imageUrl: String? = null,
+        firstImageAlt: String? = null,
+        firstImageSrcset: String? = null,
+        publishedDate: String? = null,
+        sourceUrl: String? = null
+    ): String {
+        val safeTemplate = if (!template.isNullOrBlank()) {
+            deduplicateAdScriptsAndContainers(template)
+        } else {
+            DEFAULT_MASTER_TEMPLATE
+        }
+
+        val sanitized = ImportedHtmlSanitizer.sanitize(articleHtml, sourceUrl)
+        val escapedTitle = escapeHtml(title)
+
+        var safeImageUrl = sanitizeUrl(imageUrl)
+        if (safeImageUrl.isEmpty() || MainImageSelector.isPngImageUrl(safeImageUrl)) {
+            val fromCandidates = MainImageSelector.selectMainThumbnailImage(sanitized.images)
+                ?: MainImageSelector.selectMainThumbnailImageFromHtml(sanitized.html)
+            safeImageUrl = if (!fromCandidates.isNullOrBlank() && !MainImageSelector.isPngImageUrl(fromCandidates)) {
+                sanitizeUrl(fromCandidates)
+            } else {
+                ""
+            }
+        }
+
+        val formattedDate = publishedDate ?: SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.US).format(Date())
+        val articleContainer = """<div class="imported-article-content">${sanitized.html}</div>"""
+
+        var output = safeTemplate
+        if (Regex("</style>", RegexOption.IGNORE_CASE).containsMatchIn(output)) {
+            output = Regex("</style>", RegexOption.IGNORE_CASE).replaceFirst(output) {
+                "$IMPORTED_ARTICLE_SCOPED_CSS  </style>"
+            }
+        }
+
+        val captionAnchorRx = Regex("<a\\b[^>]*>\\s*\\{\\{CAPTION\\}\\}\\s*</a>", RegexOption.IGNORE_CASE)
+        if (captionAnchorRx.containsMatchIn(output)) {
+            output = captionAnchorRx.replace(output, Regex.escapeReplacement(articleContainer))
+        }
+        if (output.contains("{{CAPTION}}")) {
+            output = output.replace("{{CAPTION}}", articleContainer)
+        } else if (!output.contains("""class="imported-article-content"""")) {
+            val videoContainerRx = Regex("<div\\b[^>]*class=[\"'][^\"']*video-container[^\"']*[\"'][^>]*>", RegexOption.IGNORE_CASE)
+            output = if (videoContainerRx.containsMatchIn(output)) {
+                videoContainerRx.replaceFirst(output) { "$articleContainer\n${it.value}" }
+            } else {
+                "$articleContainer\n$output"
+            }
+        }
+
+        if (safeImageUrl.isEmpty()) {
+            output = output.replace(
+                Regex("<a\\b[^>]*href=[\"']\\{\\{IMAGE_URL\\}\\}[\"'][^>]*>\\s*<img\\b[^>]*src=[\"']\\{\\{IMAGE_URL\\}\\}[\"'][^>]*>\\s*</a>", RegexOption.IGNORE_CASE),
+                ""
+            )
+            output = output.replace(Regex("<img\\b([^>]*id=[\"']videoThumbnail[\"'][^>]*)>", RegexOption.IGNORE_CASE)) { m ->
+                val withoutSrc = m.groupValues[1].replace(Regex("\\s*src=[\"']\\{\\{(?:THUMBNAIL_URL|IMAGE_URL)\\}\\}[\"']", RegexOption.IGNORE_CASE), "")
+                """<img$withoutSrc style="display: none;">"""
+            }
+            output = output.replace(Regex("<img\\b[^>]*src=[\"']\\{\\{(?:IMAGE_URL|THUMBNAIL_URL)\\}\\}[\"'][^>]*>", RegexOption.IGNORE_CASE), "")
+        } else {
+            output = output.replace(Regex("<img\\b([^>]*src=[\"']\\{\\{IMAGE_URL\\}\\}[\"'][^>]*)>", RegexOption.IGNORE_CASE)) { m ->
+                var updated = m.groupValues[1]
+                if (!firstImageAlt.isNullOrBlank() && Regex("\\balt=[\"']\\s*[\"']", RegexOption.IGNORE_CASE).containsMatchIn(updated)) {
+                    updated = Regex("\\balt=[\"']\\s*[\"']", RegexOption.IGNORE_CASE)
+                        .replaceFirst(updated, Regex.escapeReplacement("""alt="${escapeHtml(firstImageAlt)}""""))
+                }
+                if (!firstImageSrcset.isNullOrBlank() && !Regex("\\bsrcset=", RegexOption.IGNORE_CASE).containsMatchIn(updated)) {
+                    updated = """$updated srcset="${escapeHtml(firstImageSrcset)}""""
+                }
+                "<img$updated>"
+            }
+        }
+
+        val rendered = output
+            .replace("{{TITLE}}", escapedTitle)
+            .replace("{{IMAGE_URL}}", safeImageUrl)
+            .replace("{{THUMBNAIL_URL}}", safeImageUrl)
+            .replace("{{PUBLISHED_DATE}}", formattedDate)
+
+        val secured = ensureMasterAdConfiguration(rendered, DEFAULT_MASTER_TEMPLATE)
+        return ensureMainImageFirstInPostHtml(secured, safeImageUrl, firstImageAlt ?: title)
     }
 }
+

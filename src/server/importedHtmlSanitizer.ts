@@ -1,5 +1,17 @@
 import * as cheerio from 'cheerio';
 import type { AnyNode, Element } from 'domhandler';
+import {
+  TRACKING_OR_AD_HOST_PATTERNS,
+  AFFILIATE_AND_SHORTENER_HOST_PATTERNS,
+  AFFILIATE_AND_AD_QUERY_PARAMS,
+  AD_URL_PATH_REGEX,
+  PROMO_CTA_TEXT_REGEX,
+  PLAYER_OR_AD_CONTAINER_ID_REGEX,
+  PLAYER_OR_AD_MARKER_REGEX,
+  FOREIGN_TEMPLATE_NOISE_TEXT_REGEX,
+  isExternalBloggerSiteHref,
+  neutralizeTemplatePlaceholders,
+} from '../lib/importedHtmlCleaner';
 
 export interface SanitizedArticleImage {
   src: string;
@@ -14,84 +26,6 @@ export interface SanitizeImportedHtmlResult {
   images: SanitizedArticleImage[];
   plainText: string;
 }
-
-const TRACKING_OR_AD_HOST_PATTERNS: RegExp[] = [
-  /(^|\.)doubleclick\.net$/i,
-  /(^|\.)googlesyndication\.com$/i,
-  /(^|\.)googleadservices\.com$/i,
-  /(^|\.)google-analytics\.com$/i,
-  /(^|\.)googletagmanager\.com$/i,
-  /(^|\.)googletagservices\.com$/i,
-  /(^|\.)facebook\.com$/i,
-  /(^|\.)connect\.facebook\.net$/i,
-  /(^|\.)statcounter\.com$/i,
-  /(^|\.)histats\.com$/i,
-  /(^|\.)feedburner\.com$/i,
-  /(^|\.)quantserve\.com$/i,
-  /(^|\.)scorecardresearch\.com$/i,
-  /(^|\.)adnxs\.com$/i,
-  /(^|\.)criteo\.(com|net)$/i,
-  /(^|\.)pubmatic\.com$/i,
-  /(^|\.)rubiconproject\.com$/i,
-  /(^|\.)openx\.net$/i,
-  /(^|\.)taboola\.com$/i,
-  /(^|\.)outbrain\.com$/i,
-  /(^|\.)mgid\.com$/i,
-  /(^|\.)adsterra\.com$/i,
-  /(^|\.)effectivecpmnetwork\.com$/i,
-  /(^|\.)highperformanceformat\.com$/i,
-  /(^|\.)cheflobesofficer\.com$/i,
-  /(^|\.)propellerads\.com$/i,
-  /(^|\.)popads\.net$/i,
-  /(^|\.)monetag\.com$/i,
-  /(^|\.)amazon-adsystem\.com$/i,
-  /(^|\.)assoc-amazon\.com$/i,
-  /(^|\.)media\.net$/i,
-  /(^|\.)revcontent\.com$/i,
-];
-
-const AFFILIATE_HOST_PATTERNS: RegExp[] = [
-  /(^|\.)amzn\.to$/i,
-  /(^|\.)amzn\.eu$/i,
-  /(^|\.)amzn\.in$/i,
-  /(^|\.)a\.co$/i,
-  /(^|\.)click\.linksynergy\.com$/i,
-  /(^|\.)anrdoezrs\.net$/i,
-  /(^|\.)dpbolvw\.net$/i,
-  /(^|\.)jdoqocy\.com$/i,
-  /(^|\.)tkqlhce\.com$/i,
-  /(^|\.)kqzyfj\.com$/i,
-  /(^|\.)shareasale\.com$/i,
-  /(^|\.)awin1\.com$/i,
-  /(^|\.)gopjn\.com$/i,
-  /(^|\.)pntra\.com$/i,
-  /(^|\.)pjatr\.com$/i,
-  /(^|\.)pjtra\.com$/i,
-  /(^|\.)avantlink\.com$/i,
-  /(^|\.)go\.redirectingat\.com$/i,
-  /(^|\.)go\.skimresources\.com$/i,
-  /(^|\.)rstyle\.me$/i,
-  /(^|\.)howl\.me$/i,
-  /(^|\.)shop-links\.co$/i,
-  /(^|\.)magik\.ly$/i,
-  /(^|\.)effectivecpmnetwork\.com$/i,
-  /(^|\.)highperformanceformat\.com$/i,
-  /(^|\.)cheflobesofficer\.com$/i,
-];
-
-const AFFILIATE_QUERY_PARAMS = new Set([
-  'aff',
-  'aff_id',
-  'affiliate',
-  'affiliate_id',
-  'ascsubtag',
-  'irclickid',
-  'clickid',
-  'ranmid',
-  'raneaid',
-  'ransiteid',
-  'skimlinks',
-]);
 
 const TRACKING_QUERY_PARAMS = new Set([
   'utm_source',
@@ -119,12 +53,6 @@ const HTTPS_UPGRADE_CDN_HOSTS = [
   'wp.com',
   'wordpress.com',
 ];
-
-const AD_CONTAINER_TOKEN_REGEX =
-  /(^|[-_\s])(ad|ads|advert|advertisement|ad-slot|ad-box|ad-unit|ad-banner|ad-container|ad-wrapper|adsense|adsbygoogle|adsterra|mgid|taboola|outbrain|propeller|popads|monetag|sponsored-box|sponsor-banner|promo-banner|promotional-banner|affiliate-box|affiliate-banner|related-posts|share-buttons|social-share|newsletter-box|subscribe-box|cookie-banner|popup-overlay|blogger-post-footer|play-icon|loading-screen)([-_\s]|$)/i;
-
-const PROMO_CTA_TEXT_REGEX =
-  /^(buy now|shop now|check price|get deal|claim offer|download now|play now|watch now|watch full video|subscribe now|join telegram|follow us|advertisement|sponsored)$/i;
 
 const REMOVE_COMPLETELY_SELECTOR = [
   'script',
@@ -428,15 +356,23 @@ function isAffiliateOrAdHref(href: string): boolean {
     const parsed = new URL(href);
     const host = parsed.hostname.toLowerCase();
     if (
-      hostMatchesPatterns(host, AFFILIATE_HOST_PATTERNS) ||
+      hostMatchesPatterns(host, AFFILIATE_AND_SHORTENER_HOST_PATTERNS) ||
       hostMatchesPatterns(host, TRACKING_OR_AD_HOST_PATTERNS)
     ) {
+      return true;
+    }
+    if (AD_URL_PATH_REGEX.test(parsed.pathname)) {
+      return true;
+    }
+    // Rotating smart-link / direct-link pattern: ?key=<16+ hex/alnum>
+    const keyParam = parsed.searchParams.get('key');
+    if (keyParam && /^[a-f0-9_-]{16,}$/i.test(keyParam)) {
       return true;
     }
     const isAmazonHost = /(^|\.)amazon\.[a-z.]{2,}$/i.test(host);
     for (const key of parsed.searchParams.keys()) {
       const lowerKey = key.toLowerCase();
-      if (AFFILIATE_QUERY_PARAMS.has(lowerKey) || (isAmazonHost && lowerKey === 'tag')) {
+      if (AFFILIATE_AND_AD_QUERY_PARAMS.has(lowerKey) || (isAmazonHost && lowerKey === 'tag')) {
         return true;
       }
     }
@@ -488,19 +424,6 @@ function cleanEditorialHref(rawHref: string, baseUrl?: string): string | null {
   } catch {
     return null;
   }
-}
-
-function isImageAssetHref(href: string, imgSrc: string): boolean {
-  if (href === imgSrc) return true;
-  const cleanHref = href.split('?')[0].toLowerCase();
-  if (/\.(jpe?g|png|webp|gif|avif)$/i.test(cleanHref)) return true;
-  if (
-    (href.includes('blogger.googleusercontent.com') || href.includes('bp.blogspot.com')) &&
-    (imgSrc.includes('googleusercontent.com') || imgSrc.includes('bp.blogspot.com'))
-  ) {
-    return true;
-  }
-  return false;
 }
 
 function parseStyleDimensions(styleAttr?: string): { width?: number; height?: number; hidden: boolean } {
@@ -627,8 +550,40 @@ export function sanitizeImportedHtml(
   }
 
   const baseUrl = options.baseUrl;
+  let sourceBlogHost: string | undefined;
+  if (baseUrl) {
+    try {
+      const normalizedBase = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+      sourceBlogHost = new URL(normalizedBase).hostname.toLowerCase();
+    } catch {
+      // ignore malformed baseUrl
+    }
+  }
+
   const $ = cheerio.load(`<div id="__import_root__">${rawHtml}</div>`);
   const $root = $('#__import_root__');
+
+  // Preserve hero image metadata from imported .video-container / #videoThumbnail if needed later as fallback
+  const rescuedVideoContainerImages: SanitizedArticleImage[] = [];
+  $root.find('.video-container img, img#videoThumbnail').each((_, imgEl) => {
+    const $img = $(imgEl);
+    const rawCandidate =
+      $img.attr('src') ||
+      $img.attr('data-src') ||
+      $img.attr('data-original') ||
+      $img.attr('data-lazy-src') ||
+      '';
+    const norm = normalizeImageUrl(rawCandidate, baseUrl);
+    if (norm && !isPlaceholderImageSrc(norm) && !isTrackingOrAdImageUrl(norm)) {
+      rescuedVideoContainerImages.push({
+        src: norm,
+        srcset: normalizeSrcset($img.attr('srcset') || $img.attr('data-srcset'), baseUrl),
+        alt: ($img.attr('alt') || '').trim(),
+        width: parseNumericAttr($img.attr('width')),
+        height: parseNumericAttr($img.attr('height')),
+      });
+    }
+  });
 
   // 1. Remove HTML comments recursively
   const removeComments = (node: AnyNode) => {
@@ -646,8 +601,9 @@ export function sanitizeImportedHtml(
   // 2. Remove dangerous / executable / embed elements completely
   $root.find(REMOVE_COMPLETELY_SELECTOR).remove();
 
-  // 3. Remove explicit ad / promo / social-share / related-posts / hidden widget containers
-  // Guarded so containers holding genuine article content or Blogger images are never dropped.
+  // 3. Remove explicit ad / promo / player / social-share / related-posts / hidden widget containers
+  // Always remove strict ad-network slots & imported video-player widgets (never let them leak duplicate #videoThumbnail / #container-* / Play buttons).
+  // For general ambiguous containers, keep containsGenuineArticleContent guard so genuine article content is never dropped.
   $root.find('[class], [id], [aria-label], [data-ad-client], [data-ad-slot], [style], [hidden]').each((_, el) => {
     const $el = $(el);
     if ($el.closest('#__import_root__').length === 0) return;
@@ -657,15 +613,26 @@ export function sanitizeImportedHtml(
     const styleInfo = parseStyleDimensions($el.attr('style'));
     const isHiddenContainer = styleInfo.hidden || $el.attr('hidden') !== undefined;
 
+    const idVal = ($el.attr('id') || '').trim();
+    const classVal = ($el.attr('class') || '').trim();
+    const ariaVal = ($el.attr('aria-label') || '').trim();
+
     const hasAdAttr =
       $el.attr('data-ad-client') !== undefined || $el.attr('data-ad-slot') !== undefined;
-    const marker = [
-      $el.attr('class') || '',
-      $el.attr('id') || '',
-      $el.attr('aria-label') || '',
-    ].join(' ');
+    const isStrictAdOrPlayerWidget =
+      hasAdAttr ||
+      PLAYER_OR_AD_CONTAINER_ID_REGEX.test(idVal) ||
+      /(^|\s)(video-container|controls|play-icon|loading-screen|adsbygoogle|adsterra|effectivecpmnetwork)(\s|$)/i.test(
+        classVal
+      );
 
-    if (hasAdAttr || isHiddenContainer || AD_CONTAINER_TOKEN_REGEX.test(marker)) {
+    if (isStrictAdOrPlayerWidget || isHiddenContainer) {
+      $el.remove();
+      return;
+    }
+
+    const marker = [classVal, idVal, ariaVal].join(' ');
+    if (PLAYER_OR_AD_MARKER_REGEX.test(marker)) {
       if (!containsGenuineArticleContent($, el)) {
         $el.remove();
       }
@@ -818,46 +785,62 @@ export function sanitizeImportedHtml(
     }
   });
 
-  // 7. Clean links <a>: strip affiliate/ad links without dropping genuine article images or text
+  // 7. Clean links <a>:
+  // - ALWAYS unwrap clickable <a> links wrapping imported <img> elements (preserving JPG & PNG images non-clickable)
+  // - Remove popup/onclick/javascript/Smart/Direct/ad/CTA links & foreign Blogger website links
   $root.find('a').each((_, anchorEl) => {
     const $a = $(anchorEl);
     const rawHref = $a.attr('href') || '';
     const titleAttr = ($a.attr('title') || '').trim();
     const hasImgChild = $a.find('img').length > 0;
     const textContent = $a.text().replace(/\s+/g, ' ').trim();
+    const hasInlineEventHandler = Object.keys(anchorEl.attribs || {}).some((attr) =>
+      attr.toLowerCase().startsWith('on')
+    );
 
+    // Clickable <a> wrapping ANY image (JPG, PNG banner, etc.): strip <a> wrapper so image stays preserved & non-clickable
+    if (hasImgChild) {
+      // Remove any promo CTA text inside the anchor alongside the image
+      $a.contents().each((_, childNode) => {
+        if (childNode.type === 'text') {
+          const t = $(childNode).text().trim();
+          if (t && PROMO_CTA_TEXT_REGEX.test(t)) {
+            $(childNode).remove();
+          }
+        }
+      });
+      $a.replaceWith($a.contents());
+      return;
+    }
+
+    // Remove popup/inline-JS anchors or CTA-only anchors pointing to javascript:/#
     const cleanedHref = cleanEditorialHref(rawHref, baseUrl);
-    if (!cleanedHref) {
-      $a.replaceWith($a.contents());
-      return;
-    }
-
-    // If wrapping an article image and linking directly to the image file (Blogger lightbox wrapper), unwrap <a>
-    if (hasImgChild && !textContent) {
-      const childImgSrc = $a.find('img').first().attr('src') || '';
-      if (isImageAssetHref(cleanedHref, childImgSrc) || isAffiliateOrAdHref(cleanedHref)) {
-        $a.replaceWith($a.contents());
-        return;
-      }
-    }
-
-    // Handle affiliate / ad redirect links
-    if (isAffiliateOrAdHref(cleanedHref)) {
-      if (hasImgChild) {
-        // NEVER remove genuine article images — unwrap the affiliate link only
-        $a.replaceWith($a.contents());
-        return;
-      }
-      if (PROMO_CTA_TEXT_REGEX.test(textContent) || textContent.length === 0) {
+    if (
+      hasInlineEventHandler ||
+      !cleanedHref ||
+      isAffiliateOrAdHref(cleanedHref) ||
+      isExternalBloggerSiteHref(cleanedHref, sourceBlogHost)
+    ) {
+      if (
+        !textContent ||
+        PROMO_CTA_TEXT_REGEX.test(textContent) ||
+        hasInlineEventHandler
+      ) {
         $a.remove();
-        return;
+      } else {
+        // Inline article text wrapped in ad/external-Blogger link -> unwrap <a>, keep text
+        $a.replaceWith($a.contents());
       }
-      // Inline editorial text wrapped in an affiliate link -> unwrap <a>, keep text
-      $a.replaceWith($a.contents());
       return;
     }
 
-    // Strip all unsafe/unnecessary attributes from kept <a>
+    // Standalone promo CTA link (even if host wasn't on a static blocklist)
+    if (PROMO_CTA_TEXT_REGEX.test(textContent)) {
+      $a.remove();
+      return;
+    }
+
+    // Strip all unsafe/unnecessary attributes from kept editorial <a>
     for (const attr of Object.keys(anchorEl.attribs || {})) {
       $a.removeAttr(attr);
     }
@@ -913,7 +896,7 @@ export function sanitizeImportedHtml(
     }
   });
 
-  // 10. Remove empty elements bottom-up (preserving void tags and elements containing images)
+  // 10. Remove leftover foreign template overlay noise & empty elements bottom-up
   const voidOrSelfContent = new Set(['img', 'br', 'hr']);
   const elementsForPruning = $root.find('*').toArray().reverse();
   for (const el of elementsForPruning) {
@@ -921,17 +904,32 @@ export function sanitizeImportedHtml(
     if (voidOrSelfContent.has(tag)) continue;
     const $el = $(el);
     if ($el.find('img, hr').length > 0) continue;
+    const rawText = $el.text().replace(/\s+/g, ' ').trim();
+    if (rawText && FOREIGN_TEMPLATE_NOISE_TEXT_REGEX.test(rawText)) {
+      $el.remove();
+      continue;
+    }
     const text = $el.text().replace(/[\s\u00a0\u200b]+/g, '');
     if (!text) {
       $el.remove();
     }
   }
 
-  // 11. Serialize & collapse excessive <br> runs and blank lines
-  let cleanedHtml = ($root.html() || '')
-    .replace(/(?:<br\s*\/?>\s*){3,}/gi, '<br /><br />')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  // If the source post ONLY had its hero image inside a removed .video-container, keep it in collectedImages
+  for (const rescued of rescuedVideoContainerImages) {
+    if (!seenImageUrls.has(rescued.src)) {
+      seenImageUrls.add(rescued.src);
+      collectedImages.push(rescued);
+    }
+  }
+
+  // 11. Serialize, collapse excessive <br> runs/blank lines, and neutralize any {{PLACEHOLDER}} tokens
+  let cleanedHtml = neutralizeTemplatePlaceholders(
+    ($root.html() || '')
+      .replace(/(?:<br\s*\/?>\s*){3,}/gi, '<br /><br />')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
 
   const plainText = $root
     .text()

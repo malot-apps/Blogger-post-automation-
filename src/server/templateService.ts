@@ -11,6 +11,10 @@ import {
   isPngImageUrl,
   selectMainThumbnailImageFromHtml,
 } from '../lib/mainImageSelector';
+import {
+  deduplicateAdScriptsAndContainers,
+  ensureMasterAdConfiguration,
+} from '../lib/importedHtmlCleaner';
 
 export interface TemplateVariables {
   title: string;
@@ -27,12 +31,12 @@ export function loadMasterTemplate(): string {
   try {
     const templatePath = path.join(process.cwd(), 'templates', 'blogger-post-template.html');
     if (fs.existsSync(templatePath)) {
-      return fs.readFileSync(templatePath, 'utf8');
+      return deduplicateAdScriptsAndContainers(fs.readFileSync(templatePath, 'utf8'));
     }
   } catch (err) {
     console.error('Error reading /templates/blogger-post-template.html:', err);
   }
-  return DEFAULT_MASTER_TEMPLATE;
+  return deduplicateAdScriptsAndContainers(DEFAULT_MASTER_TEMPLATE);
 }
 
 /**
@@ -47,9 +51,10 @@ export function renderTemplate(
   templateString: string | undefined | null,
   variables: TemplateVariables
 ): string {
+  const masterTemplate = loadMasterTemplate();
   const rawTemplate = templateString && templateString.trim().length > 0
-    ? templateString
-    : loadMasterTemplate();
+    ? deduplicateAdScriptsAndContainers(templateString)
+    : masterTemplate;
 
   const escapedTitle = escapeHtml(variables.title || '');
   const escapedCaption = escapeHtml(variables.caption || '');
@@ -73,23 +78,28 @@ export function renderTemplate(
     .replace(/\{\{CAPTION\}\}/g, () => escapedCaption)
     .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
 
-  return ensureMainImageFirstInPostHtml(rendered, safeImageUrl, variables.title);
+  const secured = ensureMasterAdConfiguration(rendered, masterTemplate);
+  return ensureMainImageFirstInPostHtml(secured, safeImageUrl, variables.title);
 }
 
 /**
  * Renders a sanitized imported article into the existing Master HTML Template
- * (/templates/blogger-post-template.html or the user's saved custom template).
+ * (/templates/blogger-post-template.html or the user's saved custom template),
+ * automatically injecting the Master Template's configured ad links and preventing duplicate ad scripts/containers.
  */
 export function renderImportedTemplate(
   templateString: string | undefined | null,
   variables: ImportedTemplateVariables
 ): string {
+  const masterTemplate = loadMasterTemplate();
   const trimmedCustom = templateString?.trim();
-  // Prefer /templates/blogger-post-template.html when no custom override was edited
+  const normalizedCustom = trimmedCustom ? deduplicateAdScriptsAndContainers(trimmedCustom) : '';
   const effectiveTemplate =
-    trimmedCustom && trimmedCustom.length > 0 && trimmedCustom !== DEFAULT_MASTER_TEMPLATE.trim()
-      ? templateString!
-      : loadMasterTemplate();
+    normalizedCustom &&
+    normalizedCustom !== DEFAULT_MASTER_TEMPLATE.trim() &&
+    normalizedCustom !== masterTemplate.trim()
+      ? normalizedCustom
+      : masterTemplate;
 
-  return renderImportedPostTemplate(effectiveTemplate, variables);
+  return renderImportedPostTemplate(effectiveTemplate, variables, masterTemplate);
 }

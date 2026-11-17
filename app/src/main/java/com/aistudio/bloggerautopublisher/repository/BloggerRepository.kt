@@ -30,9 +30,13 @@ class BloggerRepository(context: Context) {
     private fun loadMigratedTemplate(): String {
         val saved = prefs.getString("custom_template", BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE)
             ?: BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE
-        val migrated = saved
+        val upgraded = saved
             .replace("""id="videoThumbnail" src="{{THUMBNAIL_URL}}"""", """id="videoThumbnail" src="{{IMAGE_URL}}"""")
             .replace("""CUSTOM_THUMBNAIL_URL = "{{THUMBNAIL_URL}}";""", """CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";""")
+        val migrated = BloggerTemplateEngine.ensureMasterAdConfiguration(
+            BloggerTemplateEngine.deduplicateAdScriptsAndContainers(upgraded),
+            BloggerTemplateEngine.DEFAULT_MASTER_TEMPLATE
+        )
         if (migrated != saved) {
             prefs.edit().putString("custom_template", migrated).apply()
         }
@@ -97,8 +101,9 @@ class BloggerRepository(context: Context) {
     }
 
     fun saveTemplate(newTemplate: String) {
-        prefs.edit().putString("custom_template", newTemplate).apply()
-        _template.value = newTemplate
+        val cleaned = BloggerTemplateEngine.deduplicateAdScriptsAndContainers(newTemplate)
+        prefs.edit().putString("custom_template", cleaned).apply()
+        _template.value = cleaned
     }
 
     fun resetTemplate() {

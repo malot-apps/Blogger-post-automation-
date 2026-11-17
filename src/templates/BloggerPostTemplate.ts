@@ -3,6 +3,11 @@ import {
   isPngImageUrl,
   selectMainThumbnailImageFromHtml,
 } from '../lib/mainImageSelector';
+import {
+  deduplicateAdScriptsAndContainers,
+  ensureMasterAdConfiguration,
+  sanitizeImportedArticleFragment,
+} from '../lib/importedHtmlCleaner';
 
 export interface BloggerTemplateVariables {
   title: string;
@@ -103,7 +108,7 @@ export const DEFAULT_MASTER_TEMPLATE = `<div class="separator" style="clear: bot
         transform: translate(-50%, -50%) scale(1.1) rotate(180deg);
       }
       100% {
-        transform: translate(-50%, -50%) scale(1.1) rotate(360deg);
+        transform: translate(-50%, -50%) scale(1) rotate(360deg);
       }
     }
     
@@ -251,9 +256,6 @@ export const DEFAULT_MASTER_TEMPLATE = `<div class="separator" style="clear: bot
   
   <script src="https://pl30160054.effectivecpmnetwork.com/44/86/88/448688bfd2ba5f19d655439d50b8ea0b.js"></script>
   
-  <script async="async" data-cfasync="false" src="https://pl30160056.effectivecpmnetwork.com/390299b40362a820b12f3db553aff06f/invoke.js"></script>
-  <div id="container-390299b40362a820b12f3db553aff06f"></div>
-  
 </body>
 </html>`;
 
@@ -345,7 +347,8 @@ export function renderBloggerPostTemplate(
     .replace(/\{\{CAPTION\}\}/g, () => formattedCaption)
     .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
 
-  return ensureMainImageFirstInPostHtml(rendered, safeImageUrl, data.title);
+  const secured = ensureMasterAdConfiguration(rendered, DEFAULT_MASTER_TEMPLATE);
+  return ensureMainImageFirstInPostHtml(secured, safeImageUrl, data.title);
 }
 
 export interface ImportedTemplateVariables {
@@ -356,6 +359,7 @@ export interface ImportedTemplateVariables {
   firstImageAlt?: string;
   firstImageSrcset?: string;
   publishedDate?: string;
+  sourceUrl?: string;
 }
 
 const IMPORTED_ARTICLE_SCOPED_CSS = `
@@ -424,18 +428,31 @@ function sanitizeTemplateUrlValue(url?: string): string {
  */
 export function renderImportedPostTemplate(
   templateString?: string | null,
-  data?: ImportedTemplateVariables
+  data?: ImportedTemplateVariables,
+  masterAdSourceTemplate?: string | null
 ): string {
-  const safeTemplate = templateString && templateString.trim().length > 0
-    ? templateString
-    : DEFAULT_MASTER_TEMPLATE;
+  const authoritativeMaster =
+    masterAdSourceTemplate && masterAdSourceTemplate.trim().length > 0
+      ? masterAdSourceTemplate
+      : DEFAULT_MASTER_TEMPLATE;
+
+  const safeTemplate =
+    templateString && templateString.trim().length > 0
+      ? deduplicateAdScriptsAndContainers(templateString)
+      : authoritativeMaster;
 
   if (!data) return safeTemplate;
+
+  // Always sanitize imported HTML strictly before merging so imported content
+  // can never execute scripts, inject ads/smart links, keep clickable banners, or override Master Template ad config.
+  const cleanedArticleHtml = sanitizeImportedArticleFragment(data.articleHtml || '', {
+    baseUrl: data.sourceUrl,
+  });
 
   const escapedTitle = escapeHtml(data.title || '');
   let safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl);
   if (!safeImageUrl || isPngImageUrl(safeImageUrl)) {
-    const recoveredFromArticle = selectMainThumbnailImageFromHtml(data.articleHtml);
+    const recoveredFromArticle = selectMainThumbnailImageFromHtml(cleanedArticleHtml);
     safeImageUrl =
       recoveredFromArticle && !isPngImageUrl(recoveredFromArticle)
         ? sanitizeTemplateUrlValue(recoveredFromArticle)
@@ -446,7 +463,7 @@ export function renderImportedPostTemplate(
     timeStyle: 'short',
   });
 
-  const articleContainer = `<div class="imported-article-content">${data.articleHtml || ''}</div>`;
+  const articleContainer = `<div class="imported-article-content">${cleanedArticleHtml}</div>`;
 
   let output = safeTemplate;
 
@@ -512,7 +529,10 @@ export function renderImportedPostTemplate(
     .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeImageUrl)
     .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
 
-  return ensureMainImageFirstInPostHtml(rendered, safeImageUrl, data.firstImageAlt || data.title);
+  // 5. Ensure ONLY Master Template's configured ad scripts/links are injected & deduplicated
+  const secured = ensureMasterAdConfiguration(rendered, authoritativeMaster);
+
+  return ensureMainImageFirstInPostHtml(secured, safeImageUrl, data.firstImageAlt || data.title);
 }
 
 export const renderTemplate = renderBloggerPostTemplate;

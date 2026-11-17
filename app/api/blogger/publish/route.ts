@@ -184,6 +184,7 @@ export async function POST(req: NextRequest) {
         thumbnailUrl: primaryImg,
         firstImageAlt: selectedImgMeta?.alt,
         firstImageSrcset: selectedImgMeta?.srcset,
+        sourceUrl: safeBaseUrl,
         publishedDate:
           typeof body.publishedDate === 'string' && body.publishedDate.trim().length > 0
             ? body.publishedDate.trim()
