@@ -1484,6 +1484,14 @@ function normalizeComparableUrl(url: string): string {
   return url.trim().replace(/&amp;/gi, '&');
 }
 
+function extractImportedArticleSlice(html: string): string | null {
+  const startMarker = '<div class="imported-article-content">';
+  const startIdx = html.indexOf(startMarker);
+  if (startIdx === -1) return null;
+  const endSectionIdx = html.indexOf('</section>', startIdx);
+  return endSectionIdx !== -1 ? html.slice(startIdx, endSectionIdx) : html.slice(startIdx);
+}
+
 /**
  * Guarantees that {{IMAGE_URL}} is the VERY FIRST <img> in the published Blogger HTML <body>
  * and precedes any competing images, iframes, videos, embeds, objects, or body scripts
@@ -1496,9 +1504,10 @@ export function ensureMainImageFirstInPostHtml(
 ): string {
   let cleanUrl = sanitizeTemplateUrlValue(mainImageUrl);
 
-  // Never allow a PNG or empty image as the hero thumbnail if a valid JPG/non-PNG image exists in HTML
+  // Never scan the Master Template shell as a fallback; only inspect .imported-article-content if present
   if (!cleanUrl || isPngImageUrl(cleanUrl)) {
-    const htmlCandidate = selectMainThumbnailImageFromHtml(html);
+    const articleSlice = extractImportedArticleSlice(html);
+    const htmlCandidate = articleSlice ? selectMainThumbnailImageFromHtml(articleSlice) : null;
     if (htmlCandidate && !isPngImageUrl(htmlCandidate)) {
       cleanUrl = sanitizeTemplateUrlValue(htmlCandidate);
     }
@@ -1541,7 +1550,7 @@ export function ensureMainImageFirstInPostHtml(
 /**
  * Renders the Blogger post HTML by replacing all dynamic template variables:
  * - {{TITLE}}
- * - {{IMAGE_URL}} (always used as the Blogger post thumbnail & first image)
+ * - {{IMAGE_URL}} / {{THUMBNAIL_URL}} (always uses the selected Main Post Image)
  * - {{CAPTION}}
  * - {{PUBLISHED_DATE}}
  * Applies only the enabled, valid Ads Settings cleanly.
@@ -1564,13 +1573,8 @@ export function renderBloggerPostTemplate(
 
   const escapedTitle = escapeHtml(data.title || '');
   const formattedCaption = escapeHtml(data.caption || '').replace(/\n/g, '<br/>');
-  let safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl);
-  if (!safeImageUrl || isPngImageUrl(safeImageUrl)) {
-    const recoveredFromTemplate = selectMainThumbnailImageFromHtml(safeTemplate);
-    if (recoveredFromTemplate && !isPngImageUrl(recoveredFromTemplate)) {
-      safeImageUrl = sanitizeTemplateUrlValue(recoveredFromTemplate);
-    }
-  }
+  const rawMainUrl = sanitizeTemplateUrlValue(data.imageUrl || data.thumbnailUrl);
+  const safeImageUrl = rawMainUrl && !isPngImageUrl(rawMainUrl) ? rawMainUrl : '';
 
   const formattedDate =
     data.publishedDate ||
@@ -1676,7 +1680,7 @@ const IMPORTED_ARTICLE_SCOPED_CSS = `
 
 function sanitizeTemplateUrlValue(url?: string): string {
   if (!url) return '';
-  return url.trim().replace(/["'<>]/g, '');
+  return url.trim().replace(/["'<>\\\r\n]/g, '');
 }
 
 /**
@@ -1721,7 +1725,7 @@ export function renderImportedPostTemplate(
     plainSummary.length > 110 ? `${plainSummary.slice(0, 107).trim()}...` : plainSummary || data.title || ''
   );
 
-  let safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl);
+  let safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl || data.thumbnailUrl);
   if (!safeImageUrl || isPngImageUrl(safeImageUrl)) {
     const recoveredFromArticle = selectMainThumbnailImageFromHtml(cleanedArticleHtml);
     safeImageUrl =
@@ -1748,9 +1752,11 @@ export function renderImportedPostTemplate(
   // 2. Replace {{CAPTION}} inside the Master Template cleanly (injecting articleContainer exactly once)
   const postDescCaptionRx = /(<section\b[^>]*id=["']postDescription["'][^>]*>[\s\S]*?)<p>\s*\{\{CAPTION\}\}\s*<\/p>/i;
   if (postDescCaptionRx.test(output)) {
-    // New Master Template: place articleContainer in #postDescription, keep separator caption short, and use shortSummary in related card
+    // Master Template: place articleContainer in #postDescription, keep separator caption clean, and use shortSummary in related card
     output = output.replace(postDescCaptionRx, (_m, prefix: string) => `${prefix}${articleContainer}`);
-    output = output.replace(/<a\b[^>]*>\s*\{\{CAPTION\}\}\s*<\/a>/gi, () => `<a href="{{IMAGE_URL}}">${escapedTitle}</a>`);
+    output = output.replace(/<a\b[^>]*>\s*\{\{CAPTION\}\}\s*<\/a>/gi, () =>
+      safeImageUrl ? `<a href="{{IMAGE_URL}}">${escapedTitle}</a>` : ''
+    );
     output = output.replace(/\{\{CAPTION\}\}/g, () => shortSummary);
   } else {
     const captionAnchorRegex = /<a\b[^>]*>\s*\{\{CAPTION\}\}\s*<\/a>/i;
@@ -1783,10 +1789,10 @@ export function renderImportedPostTemplate(
     }
   }
 
-  // 3. Handle hero {{IMAGE_URL}} and #videoThumbnail cleanly
+  // 3. Handle hero {{IMAGE_URL}} / {{THUMBNAIL_URL}} and #videoThumbnail cleanly
   if (!safeImageUrl) {
     output = output.replace(
-      /<a\b[^>]*href=["']\{\{IMAGE_URL\}\}["'][^>]*>\s*<img\b[^>]*src=["']\{\{IMAGE_URL\}\}["'][^>]*>\s*<\/a>/gi,
+      /<a\b[^>]*href=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["'][^>]*>\s*<img\b[^>]*src=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["'][^>]*>\s*<\/a>/gi,
       ''
     );
     output = output.replace(
@@ -1796,24 +1802,30 @@ export function renderImportedPostTemplate(
         return `<img${withoutSrc} style="display: none;">`;
       }
     );
-    output = output.replace(/<video\b([^>]*poster=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["'][^>]*)>/gi, (_m, attrs: string) => {
-      return `<video${attrs.replace(/\s*poster=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["']/i, '')}>`;
-    });
+    output = output.replace(
+      /<video\b([^>]*poster=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["'][^>]*)>/gi,
+      (_m, attrs: string) => {
+        return `<video${attrs.replace(/\s*poster=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["']/i, '')}>`;
+      }
+    );
     output = output.replace(/<img\b[^>]*src=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["'][^>]*>/gi, '');
   } else {
-    output = output.replace(/<img\b([^>]*src=["']\{\{IMAGE_URL\}\}["'][^>]*)>/gi, (_m, attrs: string) => {
-      let updatedAttrs = attrs;
-      if (data.firstImageAlt && /\balt=["']\s*["']/i.test(updatedAttrs)) {
-        updatedAttrs = updatedAttrs.replace(/\balt=["']\s*["']/i, () => `alt="${escapeHtml(data.firstImageAlt!)}"`);
+    output = output.replace(
+      /<img\b([^>]*src=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["'][^>]*)>/gi,
+      (_m, attrs: string) => {
+        let updatedAttrs = attrs;
+        if (data.firstImageAlt && /\balt=["']\s*["']/i.test(updatedAttrs)) {
+          updatedAttrs = updatedAttrs.replace(/\balt=["']\s*["']/i, () => `alt="${escapeHtml(data.firstImageAlt!)}"`);
+        }
+        if (data.firstImageSrcset && !/\bsrcset=/i.test(updatedAttrs)) {
+          updatedAttrs = `${updatedAttrs} srcset="${escapeHtml(data.firstImageSrcset)}"`;
+        }
+        return `<img${updatedAttrs}>`;
       }
-      if (data.firstImageSrcset && !/\bsrcset=/i.test(updatedAttrs)) {
-        updatedAttrs = `${updatedAttrs} srcset="${escapeHtml(data.firstImageSrcset)}"`;
-      }
-      return `<img${updatedAttrs}>`;
-    });
+    );
   }
 
-  // 4. Substitute all remaining Master Template placeholders safely
+  // 4. Substitute all remaining Master Template placeholders safely (exact same image for {{IMAGE_URL}} & {{THUMBNAIL_URL}})
   const rendered = output
     .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
     .replace(/\{\{IMAGE_URL\}\}/g, () => safeImageUrl)

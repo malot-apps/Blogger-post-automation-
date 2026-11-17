@@ -25,6 +25,14 @@ import { selectMainThumbnailImage, isPngImageUrl } from '@/src/lib/mainImageSele
 import { sanitizeImportedArticleFragment } from '@/src/lib/importedHtmlCleaner';
 import type { AdsSettings } from '@/src/lib/adsSettings';
 
+function resolvePostMainImage(post: ImportedPostItem): string | undefined {
+  if (post.thumbnailUrl && !isPngImageUrl(post.thumbnailUrl)) {
+    const validThumb = selectMainThumbnailImage([{ src: post.thumbnailUrl, role: 'metadata' }]);
+    if (validThumb) return validThumb;
+  }
+  return selectMainThumbnailImage(post.imageDetails || post.images) || undefined;
+}
+
 interface ImportPostsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -149,10 +157,7 @@ export function ImportPostsModal({
         ? new Date(post.published).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
         : undefined;
 
-      const safePrimaryImg =
-        selectMainThumbnailImage(post.imageDetails || post.images) ||
-        (!isPngImageUrl(post.thumbnailUrl) ? post.thumbnailUrl : undefined) ||
-        undefined;
+      const safePrimaryImg = resolvePostMainImage(post);
 
       const res = await fetch('/api/blogger/publish', {
         method: 'POST',
@@ -223,10 +228,7 @@ export function ImportPostsModal({
             ? new Date(post.published).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
             : undefined;
 
-          const safePrimaryImg =
-            selectMainThumbnailImage(post.imageDetails || post.images) ||
-            (!isPngImageUrl(post.thumbnailUrl) ? post.thumbnailUrl : undefined) ||
-            undefined;
+          const safePrimaryImg = resolvePostMainImage(post);
 
           const res = await fetch('/api/blogger/publish', {
             method: 'POST',
@@ -483,9 +485,7 @@ export function ImportPostsModal({
 
                       {/* Thumbnail */}
                       {(() => {
-                        const displayThumb =
-                          selectMainThumbnailImage(post.imageDetails || post.images) ||
-                          (!isPngImageUrl(post.thumbnailUrl) ? post.thumbnailUrl : undefined);
+                        const displayThumb = resolvePostMainImage(post);
                         return displayThumb ? (
                           /* eslint-disable-next-line @next/next/no-img-element */
                           <img
@@ -731,13 +731,8 @@ export function ImportPostsModal({
                   aiEnhancedContent || previewingPost.content,
                   { baseUrl: activeSourceUrl }
                 );
-                const primaryImage =
-                  selectMainThumbnailImage(previewingPost.imageDetails || previewingPost.images) ||
-                  (!isPngImageUrl(previewingPost.thumbnailUrl) ? previewingPost.thumbnailUrl : '') ||
-                  '';
-                const selectedDetail =
-                  previewingPost.imageDetails?.find((d) => d.src === primaryImage) ||
-                  previewingPost.imageDetails?.[0];
+                const primaryImage = resolvePostMainImage(previewingPost) || '';
+                const selectedDetail = previewingPost.imageDetails?.find((d) => d.src === primaryImage);
                 const templatedPreviewHtml = renderImportedPostTemplate(
                   templateString,
                   {

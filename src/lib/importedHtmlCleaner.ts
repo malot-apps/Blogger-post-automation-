@@ -1,4 +1,5 @@
 import { applyAdsSettingsToHtml, DEFAULT_ADS_SETTINGS, type AdsSettings } from './adsSettings';
+import { isUnwantedUiOrAdImage } from './mainImageSelector';
 
 /**
  * Shared, isomorphic utilities for:
@@ -6,7 +7,8 @@ import { applyAdsSettingsToHtml, DEFAULT_ADS_SETTINGS, type AdsSettings } from '
  *    affiliate/shortener domains, and external Blogger site links.
  * 2. Cleaning imported article HTML before merging into the Master HTML Template
  *    (even in client-side preview or direct template rendering).
- * 3. Protecting, injecting, and deduplicating the Master HTML Template's ad scripts
+ * 3. Removing Schema.org JSON-LD structured data & unwanted UI icons/ads while preserving genuine articles.
+ * 4. Protecting, injecting, and deduplicating the Master HTML Template's ad scripts
  *    and ad containers so only Ads Settings-controlled ads run.
  */
 
@@ -277,6 +279,254 @@ export function normalizeExternalHref(rawHref: string, baseUrl?: string): string
   }
 }
 
+const SCHEMA_ORG_TYPES_REGEX =
+  /^(Article|BlogPosting|NewsArticle|TechArticle|ScholarlyArticle|ReportageNewsArticle|SocialMediaPosting|VideoObject|ImageObject|AudioObject|MediaObject|WebPage|WebSite|BreadcrumbList|ListItem|Organization|NewsMediaOrganization|Person|Review|Product|FAQPage|Question|Answer|HowTo|HowToStep|Recipe|Event|CreativeWork|Thing|SearchAction|ReadAction|EntryPoint|SiteNavigationElement|WPHeader|WPFooter)$/i;
+
+const SCHEMA_ORG_PROPERTY_KEY_REGEX =
+  /"(?:headline|datePublished|dateModified|mainEntityOfPage|publisher|author|embedUrl|contentUrl|thumbnailUrl|itemListElement|@id|potentialAction|inLanguage|wordCount|articleSection|articleBody|description)"\s*:/i;
+
+function decodeBasicJsonEntities(input: string): string {
+  return input
+    .replace(/&quot;|&#34;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function isPlaceholderFragmentImage(src: string): boolean {
+  const lower = src.trim().toLowerCase();
+  if (!lower) return true;
+  if (lower.startsWith('data:image/svg+xml')) return true;
+  if (lower.startsWith('data:image/gif;base64,r0lgod')) return true;
+  if (lower.startsWith('data:image/') && lower.length < 180) return true;
+  if (/\/(blank|spacer|transparent|pixel|1x1|loading|spinner|placeholder)\.(gif|png|jpg|webp|svg)(\?|$)/i.test(lower)) {
+    return true;
+  }
+  return false;
+}
+
+function normalizeFragmentSrcset(rawSrcset?: string | null, baseUrl?: string): string | undefined {
+  if (!rawSrcset || typeof rawSrcset !== 'string') return undefined;
+  const entries: string[] = [];
+  const parts = rawSrcset.split(/,(?=\s*(?:https?:\/\/|\/\/|\/|data:image\/))/i);
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const match = trimmed.match(/^(\S+)(?:\s+(.+))?$/);
+    if (!match) continue;
+    const rawUrl = match[1];
+    const descriptor = match[2]?.trim();
+    if (isPlaceholderFragmentImage(rawUrl)) continue;
+    const normalized =
+      normalizeExternalHref(rawUrl, baseUrl) ||
+      (rawUrl.startsWith('data:image/') && !rawUrl.startsWith('data:image/svg+xml') ? rawUrl : null);
+    if (!normalized || isAdOrSmartLinkUrl(normalized)) continue;
+    if (descriptor && /^(\d+w|\d+(\.\d+)?x)$/i.test(descriptor)) {
+      entries.push(`${normalized} ${descriptor}`);
+    } else {
+      entries.push(normalized);
+    }
+  }
+  return entries.length > 0 ? entries.join(', ') : undefined;
+}
+
+function firstUrlFromFragmentSrcset(srcset?: string): string | null {
+  if (!srcset) return null;
+  const firstEntry = srcset.split(/,(?=\s*(?:https?:\/\/|\/\/|\/|data:image\/))/i)[0]?.trim();
+  if (!firstEntry) return null;
+  return firstEntry.split(/\s+/)[0]?.trim() || null;
+}
+
+function hasSchemaOrgSignature(obj: unknown): boolean {
+  if (!obj || typeof obj !== 'object') return false;
+  if (Array.isArray(obj)) {
+    return obj.some((item) => hasSchemaOrgSignature(item));
+  }
+  const rec = obj as Record<string, unknown>;
+  const ctx = rec['@context'];
+  if (typeof ctx === 'string' && /schema\.org/i.test(ctx)) {
+    return true;
+  }
+  if (Array.isArray(ctx) && ctx.some((c) => typeof c === 'string' && /schema\.org/i.test(c))) {
+    return true;
+  }
+  if (typeof ctx === 'object' && ctx !== null) {
+    const vocab = (ctx as Record<string, unknown>)['@vocab'];
+    if (typeof vocab === 'string' && /schema\.org/i.test(vocab)) return true;
+  }
+
+  const rawType = rec['@type'];
+  const types = Array.isArray(rawType) ? rawType : rawType ? [rawType] : [];
+  const hasSchemaType = types.some((t) => typeof t === 'string' && SCHEMA_ORG_TYPES_REGEX.test(t.trim()));
+  if (hasSchemaType) {
+    const keys = Object.keys(rec);
+    if (
+      keys.some((k) =>
+        [
+          'headline',
+          'datePublished',
+          'dateModified',
+          'mainEntityOfPage',
+          'publisher',
+          'author',
+          'embedUrl',
+          'contentUrl',
+          'thumbnailUrl',
+          'itemListElement',
+          '@id',
+          'potentialAction',
+          'inLanguage',
+          'wordCount',
+          'articleSection',
+          'articleBody',
+          'url',
+          'name',
+        ].includes(k)
+      )
+    ) {
+      return true;
+    }
+  }
+
+  if (Array.isArray(rec['@graph']) && rec['@graph'].some((item) => hasSchemaOrgSignature(item))) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Determines whether a serialized string represents Schema.org / JSON-LD structured metadata
+ * (as opposed to ordinary JSON/code examples inside an article).
+ */
+export function isSchemaOrgJsonLdPayload(raw: string): boolean {
+  if (!raw || typeof raw !== 'string') return false;
+  const decoded = decodeBasicJsonEntities(raw).trim();
+  if (!decoded.startsWith('{') && !decoded.startsWith('[')) return false;
+
+  try {
+    const parsed = JSON.parse(decoded);
+    return hasSchemaOrgSignature(parsed);
+  } catch {
+    // Fallback heuristic if JSON-LD had minor unescaped quotes/trailing truncation
+    if (/["']@context["']\s*:\s*["']https?:\/\/schema\.org/i.test(decoded)) {
+      return true;
+    }
+    const typeMatch = /["']@type["']\s*:\s*["']([A-Za-z0-9_-]+)["']/i.exec(decoded);
+    if (typeMatch && SCHEMA_ORG_TYPES_REGEX.test(typeMatch[1]) && SCHEMA_ORG_PROPERTY_KEY_REGEX.test(decoded)) {
+      return true;
+    }
+    return false;
+  }
+}
+
+function findBalancedJsonEnd(text: string, startIndex: number): number {
+  const openChar = text[startIndex];
+  const closeChar = openChar === '{' ? '}' : ']';
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = startIndex; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{' || ch === '[') {
+      depth++;
+    } else if (ch === '}' || ch === ']') {
+      depth--;
+      if (depth === 0 && ch === closeChar) {
+        return i + 1;
+      }
+    }
+  }
+  return -1;
+}
+
+/**
+ * Removes residual Schema.org JSON-LD blocks (including entity-escaped <script type="application/ld+json">
+ * and raw serialized JSON-LD text blobs) while leaving genuine prose and normal JSON content untouched.
+ */
+export function stripSchemaOrgJsonLdFromText(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+
+  // 1. Strip both entity-escaped (&lt;script...&gt;) and DOM-decoded (<script...>) JSON-LD blocks inside text nodes
+  let output = text
+    .replace(
+      /&lt;script\b[^&]*?\btype\s*=\s*(?:&quot;|&#34;|&apos;|&#39;|"|')application\/(?:ld\+json|schema\+json)(?:&quot;|&#34;|&apos;|&#39;|"|')[^&]*?&gt;[\s\S]*?&lt;\/script&gt;/gi,
+      ''
+    )
+    .replace(
+      /<script\b[^>]*?\btype\s*=\s*["']application\/(?:ld\+json|schema\+json)["'][^>]*>[\s\S]*?<\/script>/gi,
+      ''
+    );
+
+  if (!output.includes('@context') && !output.includes('@type')) {
+    return output;
+  }
+
+  // 2. Strip balanced serialized JSON-LD objects/arrays anywhere in non-code text
+  let cursor = 0;
+  let result = '';
+
+  while (cursor < output.length) {
+    const braceIdx = output.indexOf('{', cursor);
+    const bracketIdx = output.indexOf('[', cursor);
+    let candidateIdx = -1;
+    if (braceIdx !== -1 && bracketIdx !== -1) {
+      candidateIdx = Math.min(braceIdx, bracketIdx);
+    } else {
+      candidateIdx = Math.max(braceIdx, bracketIdx);
+    }
+
+    if (candidateIdx === -1) {
+      result += output.slice(cursor);
+      break;
+    }
+
+    // Look ahead up to 160 chars to quickly skip normal prose containing `{` or `[`
+    const previewSlice = output.slice(candidateIdx, candidateIdx + 160);
+    if (!/(?:@context|@type|@graph)/i.test(previewSlice)) {
+      result += output.slice(cursor, candidateIdx + 1);
+      cursor = candidateIdx + 1;
+      continue;
+    }
+
+    const endIdx = findBalancedJsonEnd(output, candidateIdx);
+    if (endIdx !== -1) {
+      const candidateJson = output.slice(candidateIdx, endIdx);
+      if (isSchemaOrgJsonLdPayload(candidateJson)) {
+        result += output.slice(cursor, candidateIdx);
+        cursor = endIdx;
+        continue;
+      }
+    } else if (/["']@context["']\s*:\s*(?:&quot;|")https?:\/\/schema\.org/i.test(previewSlice)) {
+      // Truncated trailing JSON-LD blob in RSS summary
+      result += output.slice(cursor, candidateIdx);
+      break;
+    }
+
+    result += output.slice(cursor, candidateIdx + 1);
+    cursor = candidateIdx + 1;
+  }
+
+  return result;
+}
+
 /**
  * Neutralizes any accidental {{PLACEHOLDER}} tokens in imported HTML
  * so imported content cannot hijack Master Template variables.
@@ -286,14 +536,91 @@ export function neutralizeTemplatePlaceholders(html: string): string {
   return html.replace(/\{\{\s*(TITLE|IMAGE_URL|THUMBNAIL_URL|CAPTION|PUBLISHED_DATE)\s*\}\}/gi, '');
 }
 
+function cleanImgAttrsString(
+  rawAttrs: string,
+  baseUrl?: string
+): { src: string; srcset?: string; alt: string; title: string; width?: string; height?: string } | null {
+  const getAttr = (name: string): string => {
+    const rx = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
+    const m = rx.exec(rawAttrs);
+    return (m?.[1] || m?.[2] || m?.[3] || '').trim();
+  };
+
+  const style = getAttr('style').toLowerCase();
+  if (/display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(\.0+)?\s*(;|$)/i.test(style)) {
+    return null;
+  }
+
+  const candidateSrcs = [
+    getAttr('src'),
+    getAttr('data-src'),
+    getAttr('data-original'),
+    getAttr('data-lazy-src'),
+    getAttr('data-lazyload'),
+    getAttr('data-url'),
+    getAttr('data-hi-res-src'),
+  ];
+
+  let resolvedSrc: string | null = null;
+  for (const cand of candidateSrcs) {
+    if (!cand || isPlaceholderFragmentImage(cand)) continue;
+    const norm =
+      normalizeExternalHref(cand, baseUrl) ||
+      (cand.startsWith('data:image/') && !cand.startsWith('data:image/svg+xml') ? cand : null);
+    if (norm) {
+      resolvedSrc = norm;
+      break;
+    }
+  }
+
+  const normalizedSrcset = normalizeFragmentSrcset(getAttr('srcset') || getAttr('data-srcset'), baseUrl);
+  if (!resolvedSrc && normalizedSrcset) {
+    resolvedSrc = firstUrlFromFragmentSrcset(normalizedSrcset);
+  }
+  if (!resolvedSrc || isAdOrSmartLinkUrl(resolvedSrc)) {
+    return null;
+  }
+
+  const alt = getAttr('alt');
+  const title = getAttr('title');
+  const className = getAttr('class');
+  const id = getAttr('id');
+  const wNum = parseInt(getAttr('width') || getAttr('data-original-width') || '', 10);
+  const hNum = parseInt(getAttr('height') || getAttr('data-original-height') || '', 10);
+
+  if (
+    isUnwantedUiOrAdImage({
+      src: resolvedSrc,
+      alt,
+      title,
+      className,
+      id,
+      width: Number.isFinite(wNum) ? wNum : undefined,
+      height: Number.isFinite(hNum) ? hNum : undefined,
+    })
+  ) {
+    return null;
+  }
+
+  return {
+    src: resolvedSrc,
+    srcset: normalizedSrcset,
+    alt,
+    title,
+    width: Number.isFinite(wNum) && wNum > 2 ? String(wNum) : undefined,
+    height: Number.isFinite(hNum) && hNum > 2 ? String(hNum) : undefined,
+  };
+}
+
 /**
  * Isomorphic sanitizer for imported article HTML fragments before merging with the Master HTML Template.
  * Runs cleanly in both browser (using DOMParser) and server/Node (using deterministic HTML pass).
  * Guarantees that even client-side callers (like ImportPostsModal preview) strip:
  * - all <script>, <style>, <iframe>, <object>, <embed>, <button>, <form>, inline JS handlers
+ * - Schema.org JSON-LD (<script type="application/ld+json">, entity-escaped blocks, serialized text nodes)
  * - imported .video-container / .controls / .play-icon / .loading-screen / #container-* blocks
  * - all external Smart Links, Direct Links, popup links, ad URLs, and foreign Blogger site links
- * - all clickable <a> links wrapping <img> tags (making preserved JPG & PNG images non-clickable)
+ * - unwanted PNG icons, play buttons, logos, tracking pixels, and ad banners (while preserving genuine PNG infographics)
  */
 export function sanitizeImportedArticleFragment(
   rawHtml: string,
@@ -322,8 +649,50 @@ export function sanitizeImportedArticleFragment(
       if (root) {
         // 1. Remove dangerous/executable/interactive elements completely (preserve clean article <video>/<audio> media below)
         const removeTags =
-          'script, style, noscript, iframe, frame, frameset, object, embed, applet, param, form, input, textarea, button, select, option, svg, canvas, track, map, area, template, link, meta, base, title, head, ins.adsbygoogle, [data-ad-client], [data-ad-slot], [data-app-ad]';
+          'script, style, noscript, iframe, frame, frameset, object, embed, applet, param, form, input, textarea, button, select, option, svg, canvas, track, map, area, template, link, meta, base, title, head, ins.adsbygoogle, [type="application/ld+json"], [data-ad-client], [data-ad-slot], [data-app-ad]';
         root.querySelectorAll(removeTags).forEach((el) => el.remove());
+
+        // 1b. Strip Schema.org JSON-LD serialized text nodes outside <pre>/<code>/<kbd>/<samp>
+        const walkTextNodes = (node: Node) => {
+          if (node.nodeType === 3) {
+            const val = node.nodeValue || '';
+            if (val.includes('@context') || val.includes('@type') || /application\/ld\+json/i.test(val)) {
+              const stripped = stripSchemaOrgJsonLdFromText(val);
+              if (stripped !== val) {
+                node.nodeValue = stripped;
+              }
+            }
+            return;
+          }
+          if (node.nodeType === 1) {
+            const tag = (node as Element).tagName.toLowerCase();
+            if (tag === 'pre' || tag === 'code' || tag === 'kbd' || tag === 'samp') {
+              return;
+            }
+            Array.from(node.childNodes).forEach(walkTextNodes);
+          }
+        };
+        walkTextNodes(root);
+
+        // 1c. Remove Schema.org microdata metadata wrappers when they hold no genuine article prose/images
+        root.querySelectorAll('[itemtype*="schema.org"]').forEach((el) => {
+          if (!el.isConnected) return;
+          const itemtype = (el.getAttribute('itemtype') || '').toLowerCase();
+          const hasArticleBody =
+            el.getAttribute('itemprop') === 'articleBody' ||
+            el.querySelector('[itemprop="articleBody"]') !== null;
+          if (hasArticleBody) return;
+          const isPureMetaSchema =
+            itemtype.includes('breadcrumblist') ||
+            itemtype.includes('imageobject') ||
+            itemtype.includes('organization') ||
+            itemtype.includes('person');
+          const textLen = (el.textContent || '').replace(/\s+/g, ' ').trim().length;
+          const hasHeading = el.querySelector('h1, h2, h3, h4') !== null;
+          if (isPureMetaSchema || (!hasHeading && textLen < 120 && el.querySelector('img') === null)) {
+            el.remove();
+          }
+        });
 
         // 2. Remove imported player & ad containers
         root.querySelectorAll('[id], [class], [aria-label], [hidden], [style]').forEach((el) => {
@@ -338,7 +707,7 @@ export function sanitizeImportedArticleFragment(
             /visibility\s*:\s*hidden/i.test(style);
           const isPlayerOrAdContainer =
             PLAYER_OR_AD_CONTAINER_ID_REGEX.test(id) ||
-            /(^|\s)(video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|live-viewer-badge|scroll-indicator-wrap|related-section|ad-slot-wrapper|ad-fallback|adsbygoogle|adsterra|effectivecpmnetwork)(\s|$)/i.test(cls);
+            /(^|\s)(video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|live-viewer-badge|scroll-indicator-wrap|related-section|ad-slot-wrapper|ad-fallback|adsbygoogle|adsterra|effectivecpmnetwork|schema-markup|post-schema)(\s|$)/i.test(cls);
 
           if (isPlayerOrAdContainer || isHidden || PLAYER_OR_AD_MARKER_REGEX.test(`${id} ${cls} ${aria}`)) {
             if (isPlayerOrAdContainer || isHidden) {
@@ -353,7 +722,7 @@ export function sanitizeImportedArticleFragment(
           }
         });
 
-        // 2b. Validate remaining <video>/<audio> elements (strip ad/empty/malicious media, preserve clean article media)
+        // 2b. Validate remaining <video>/<audio> elements
         root.querySelectorAll('video, audio').forEach((media) => {
           const rawSrc =
             media.getAttribute('src') ||
@@ -376,6 +745,22 @@ export function sanitizeImportedArticleFragment(
           media.querySelectorAll('source').forEach((s) => s.remove());
         });
 
+        // 2c. Unwrap <picture> into its <img> while inheriting <source srcset>
+        root.querySelectorAll('picture').forEach((pic) => {
+          const img = pic.querySelector('img');
+          if (!img) {
+            pic.remove();
+            return;
+          }
+          if (!img.getAttribute('srcset')) {
+            const sourceSrcset = pic.querySelector('source[srcset]')?.getAttribute('srcset');
+            if (sourceSrcset) {
+              img.setAttribute('srcset', sourceSrcset);
+            }
+          }
+          pic.replaceWith(img);
+        });
+
         // 3. Clean <a> elements: remove clickable ad banners completely, unwrap safe image links, keep clean editorial links
         root.querySelectorAll('a').forEach((a) => {
           const img = a.querySelector('img');
@@ -393,24 +778,23 @@ export function sanitizeImportedArticleFragment(
               img.getAttribute('src') ||
               img.getAttribute('data-src') ||
               img.getAttribute('data-original') ||
+              img.getAttribute('data-lazy-src') ||
               '';
             const imgAlt = img.getAttribute('alt') || '';
-            const w = parseInt(img.getAttribute('width') || '0', 10) || 0;
-            const h = parseInt(img.getAttribute('height') || '0', 10) || 0;
-            const isBannerSized =
-              (w > 0 && h > 0 && w <= 180 && h <= 60) ||
-              (w === 728 && h === 90) ||
-              (w === 300 && h === 250) ||
-              (w === 468 && h === 60) ||
-              (w === 320 && h === 50) ||
-              (w === 160 && h === 600);
-            const isAdBannerFilename =
-              /(ad[-_]?banner|sponsored|promo[-_]?banner|buy[-_]?now|shop[-_]?now|728x90|300x250|468x60|320x50|160x600)/i.test(
-                `${imgSrc} ${imgAlt}`
-              );
+            const w = parseInt(img.getAttribute('width') || img.getAttribute('data-original-width') || '0', 10) || 0;
+            const h = parseInt(img.getAttribute('height') || img.getAttribute('data-original-height') || '0', 10) || 0;
             const pointsToAd = isAdOrSmartLinkUrl(hrefTarget);
+            const looksLikeUiOrAd = isUnwantedUiOrAdImage({
+              src: imgSrc,
+              alt: imgAlt,
+              title: img.getAttribute('title') || '',
+              className: img.getAttribute('class') || '',
+              id: img.getAttribute('id') || '',
+              width: w || undefined,
+              height: h || undefined,
+            });
 
-            if (pointsToAd && (isBannerSized || isAdBannerFilename || PROMO_CTA_TEXT_REGEX.test(text))) {
+            if (looksLikeUiOrAd || (pointsToAd && PROMO_CTA_TEXT_REGEX.test(text))) {
               a.remove();
               return;
             }
@@ -457,34 +841,78 @@ export function sanitizeImportedArticleFragment(
           a.setAttribute('rel', 'noopener noreferrer');
         });
 
-        // 4. Strip event handlers, ids, classes, styles, and tracking pixels from remaining elements
+        // 4. Strip event handlers, ids, classes, styles, tracking pixels, and unwanted PNG icons/logos/play buttons from elements
         root.querySelectorAll('*').forEach((el) => {
           const tag = el.tagName.toLowerCase();
           if (tag === 'img') {
-            const src =
-              el.getAttribute('src') ||
-              el.getAttribute('data-src') ||
-              el.getAttribute('data-original') ||
-              '';
-            const cleanSrc =
-              normalizeExternalHref(src, options.baseUrl) ||
-              (src.startsWith('data:image/') && !src.startsWith('data:image/svg+xml') ? src : null);
-            if (!cleanSrc || isAdOrSmartLinkUrl(cleanSrc)) {
+            const candidateSrcs = [
+              el.getAttribute('src'),
+              el.getAttribute('data-src'),
+              el.getAttribute('data-original'),
+              el.getAttribute('data-lazy-src'),
+              el.getAttribute('data-lazyload'),
+              el.getAttribute('data-url'),
+              el.getAttribute('data-hi-res-src'),
+            ];
+
+            let cleanSrc: string | null = null;
+            for (const c of candidateSrcs) {
+              if (!c || isPlaceholderFragmentImage(c)) continue;
+              const norm =
+                normalizeExternalHref(c, options.baseUrl) ||
+                (c.startsWith('data:image/') && !c.startsWith('data:image/svg+xml') ? c : null);
+              if (norm) {
+                cleanSrc = norm;
+                break;
+              }
+            }
+
+            const normalizedSrcset = normalizeFragmentSrcset(
+              el.getAttribute('srcset') || el.getAttribute('data-srcset'),
+              options.baseUrl
+            );
+            if (!cleanSrc && normalizedSrcset) {
+              cleanSrc = firstUrlFromFragmentSrcset(normalizedSrcset);
+            }
+
+            const alt = (el.getAttribute('alt') || '').trim();
+            const title = (el.getAttribute('title') || '').trim();
+            const className = el.getAttribute('class') || '';
+            const id = el.getAttribute('id') || '';
+            const widthAttr = el.getAttribute('width') || el.getAttribute('data-original-width') || '';
+            const heightAttr = el.getAttribute('height') || el.getAttribute('data-original-height') || '';
+            const wNum = parseInt(widthAttr, 10);
+            const hNum = parseInt(heightAttr, 10);
+            const styleAttr = (el.getAttribute('style') || '').toLowerCase();
+            const isStyleHidden = /display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(\.0+)?\s*(;|$)/i.test(
+              styleAttr
+            );
+
+            if (
+              !cleanSrc ||
+              isStyleHidden ||
+              isAdOrSmartLinkUrl(cleanSrc) ||
+              isUnwantedUiOrAdImage({
+                src: cleanSrc,
+                alt,
+                title,
+                className,
+                id,
+                width: Number.isFinite(wNum) ? wNum : undefined,
+                height: Number.isFinite(hNum) ? hNum : undefined,
+              })
+            ) {
               el.remove();
               return;
             }
-            const alt = el.getAttribute('alt') || '';
-            const srcset = el.getAttribute('srcset');
-            const title = el.getAttribute('title');
-            const width = el.getAttribute('width');
-            const height = el.getAttribute('height');
+
             Array.from(el.attributes).forEach((attr) => el.removeAttribute(attr.name));
             el.setAttribute('src', cleanSrc);
             el.setAttribute('alt', alt);
-            if (srcset) el.setAttribute('srcset', srcset);
+            if (normalizedSrcset) el.setAttribute('srcset', normalizedSrcset);
             if (title) el.setAttribute('title', title);
-            if (width) el.setAttribute('width', width);
-            if (height) el.setAttribute('height', height);
+            if (Number.isFinite(wNum) && wNum > 2) el.setAttribute('width', String(wNum));
+            if (Number.isFinite(hNum) && hNum > 2) el.setAttribute('height', String(hNum));
           } else if (tag === 'video' || tag === 'audio') {
             return;
           } else {
@@ -506,11 +934,11 @@ export function sanitizeImportedArticleFragment(
           }
         });
 
-        // 5. Prune leftover foreign template overlay text paragraphs
-        root.querySelectorAll('p, div, span').forEach((el) => {
-          if (el.querySelector('img')) return;
+        // 5. Prune leftover foreign template overlay text & empty wrappers left after icon/JSON-LD removal
+        Array.from(root.querySelectorAll('p, div, span, figure')).reverse().forEach((el) => {
+          if (el.querySelector('img, hr, video, audio')) return;
           const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
-          if (FOREIGN_TEMPLATE_NOISE_TEXT_REGEX.test(txt)) {
+          if (!txt || FOREIGN_TEMPLATE_NOISE_TEXT_REGEX.test(txt)) {
             el.remove();
           }
         });
@@ -518,26 +946,68 @@ export function sanitizeImportedArticleFragment(
         return neutralizeTemplatePlaceholders(root.innerHTML.trim());
       }
     } catch {
-      // fallback to regex cleaner below
+      // fallback to deterministic non-DOM cleaner below
     }
   }
 
-  // Regex fallback for non-DOM environments (Node SSR / fallback before Cheerio)
+  // Deterministic non-DOM fallback (Node SSR / renderImportedPostTemplate safety pass)
   let cleaned = rawHtml
     .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<(script|style|noscript|iframe|frame|frameset|object|embed|applet|form|button|svg|canvas|head|title)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(script|style|noscript|iframe|frame|frameset|object|embed|applet|form|button|svg|canvas|head|title|template)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
     .replace(/<(script|style|noscript|iframe|frame|embed|object|input|textarea|button|meta|link|base)\b[^>]*\/?>/gi, '')
     .replace(/<aside\b[^>]*\b(?:ad-slot-wrapper|data-ad-slot|data-app-ad)\b[^>]*>[\s\S]*?<\/aside>/gi, '')
     .replace(/<section\b[^>]*\brelated-section\b[^>]*>[\s\S]*?<\/section>/gi, '')
-    .replace(/<div\b[^>]*\b(?:class=["'][^"']*\b(?:video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|scroll-indicator-wrap)\b[^"']*["']|id=["']container-[^"']+["'])[^>]*>[\s\S]*?<\/div>/gi, '')
-    // Strip inline event handlers and tracking ping attributes
-    .replace(/\s+(?:on[a-z]+|ping)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    // Remove javascript:/vbscript: hrefs
+    .replace(/<div\b[^>]*\b(?:class=["'][^"']*\b(?:video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|scroll-indicator-wrap|schema-markup|post-schema)\b[^"']*["']|id=["']container-[^"']+["'])[^>]*>[\s\S]*?<\/div>/gi, '');
+
+  // Preserve <pre> and <code> blocks while removing entity-escaped/serialized Schema.org JSON-LD text blobs
+  const protectedCodeBlocks: string[] = [];
+  cleaned = cleaned.replace(/<(pre|code)\b[^>]*>[\s\S]*?<\/\1>/gi, (match) => {
+    const token = `__PROTECTED_CODE_BLOCK_${protectedCodeBlocks.length}__`;
+    protectedCodeBlocks.push(match);
+    return token;
+  });
+
+  cleaned = stripSchemaOrgJsonLdFromText(cleaned);
+
+  cleaned = cleaned.replace(/__PROTECTED_CODE_BLOCK_(\d+)__/g, (_m, idxStr: string) => {
+    return protectedCodeBlocks[parseInt(idxStr, 10)] || '';
+  });
+
+  // Unwrap <picture> inheriting <source srcset>
+  cleaned = cleaned.replace(/<picture\b[^>]*>([\s\S]*?)<\/picture>/gi, (_m, inner: string) => {
+    const imgMatch = /<img\b[^>]*>/i.exec(inner);
+    if (!imgMatch) return '';
+    let imgTag = imgMatch[0];
+    if (!/\bsrcset=/i.test(imgTag)) {
+      const srcSetMatch = /<source\b[^>]*\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(inner);
+      const srcsetVal = srcSetMatch?.[1] || srcSetMatch?.[2];
+      if (srcsetVal) {
+        imgTag = imgTag.replace(/\/?>$/, ` srcset="${srcsetVal}">`);
+      }
+    }
+    return imgTag;
+  });
+
+  // Clean <img> elements (lazy-recovery, strip unwanted UI/play/logo/ad images, preserve valid image attributes)
+  cleaned = cleaned.replace(/<img\b([^>]*)>/gi, (_m, attrs: string) => {
+    const info = cleanImgAttrsString(attrs, options.baseUrl);
+    if (!info) return '';
+    const outAttrs = [`src="${info.src.replace(/"/g, '&quot;')}"`];
+    if (info.srcset) outAttrs.push(`srcset="${info.srcset.replace(/"/g, '&quot;')}"`);
+    outAttrs.push(`alt="${info.alt.replace(/"/g, '&quot;')}"`);
+    if (info.title) outAttrs.push(`title="${info.title.replace(/"/g, '&quot;')}"`);
+    if (info.width) outAttrs.push(`width="${info.width}"`);
+    if (info.height) outAttrs.push(`height="${info.height}"`);
+    return `<img ${outAttrs.join(' ')} />`;
+  });
+
+  // Strip inline event handlers, tracking ping, and microdata attrs
+  cleaned = cleaned
+    .replace(/\s+(?:on[a-z]+|ping|itemscope|itemtype|itemprop|itemid|itemref)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '')
     .replace(/<a\b[^>]*href\s*=\s*["']\s*(?:javascript|vbscript|data):[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi, '$1')
-    // Remove id/class/style attrs to prevent Master Template CSS/JS collision
     .replace(/\s+(?:id|class|style)\s*=\s*(?:"[^"]*"|'[^']*')/gi, '');
 
-  // Clean remaining <a> tags (remove clickable ad banners completely; unwrap safe image links; remove ad/CTA links)
+  // Clean remaining <a> tags
   cleaned = cleaned.replace(
     /<a\b([^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*)>([\s\S]*?)<\/a>/gi,
     (fullMatch, _attrs, dqHref: string | undefined, sqHref: string | undefined, innerHtml: string) => {
@@ -562,6 +1032,9 @@ export function sanitizeImportedArticleFragment(
       return fullMatch;
     }
   );
+
+  // Remove empty <p> / <div> / <figure> wrappers left after JSON-LD/icon cleanup
+  cleaned = cleaned.replace(/<(p|div|span|figure)\b[^>]*>\s*(?:&nbsp;|\s)*<\/\1>/gi, '');
 
   return neutralizeTemplatePlaceholders(cleaned.trim());
 }

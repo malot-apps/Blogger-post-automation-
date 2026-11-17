@@ -11,7 +11,9 @@ import {
   FOREIGN_TEMPLATE_NOISE_TEXT_REGEX,
   isExternalBloggerSiteHref,
   neutralizeTemplatePlaceholders,
+  stripSchemaOrgJsonLdFromText,
 } from '../lib/importedHtmlCleaner';
+import { isUnwantedUiOrAdImage } from '../lib/mainImageSelector';
 
 export interface SanitizedArticleImage {
   src: string;
@@ -83,6 +85,8 @@ const REMOVE_COMPLETELY_SELECTOR = [
   'title',
   'head',
   'ins.adsbygoogle',
+  '[type="application/ld+json"]',
+  '[type="application/schema+json"]',
   '[data-ad-client]',
   '[data-ad-slot]',
   '[data-app-ad]',
@@ -140,6 +144,8 @@ const ALLOWED_TAGS = new Set([
   'th',
   'td',
   'caption',
+  'colgroup',
+  'col',
 ]);
 
 const BLOCK_LEVEL_TAGS = new Set([
@@ -604,6 +610,49 @@ export function sanitizeImportedHtml(
   // 2. Remove dangerous / executable / embed elements completely
   $root.find(REMOVE_COMPLETELY_SELECTOR).remove();
 
+  // 2b. Strip residual Schema.org JSON-LD serialized text nodes outside <pre>/<code>/<kbd>/<samp>
+  const stripJsonLdInNode = (node: AnyNode) => {
+    const $node = $(node);
+    $node.contents().each((_, child) => {
+      if (child.type === 'text') {
+        const textVal = child.data || '';
+        if (textVal.includes('@context') || textVal.includes('@type') || /application\/ld\+json/i.test(textVal)) {
+          const cleanedText = stripSchemaOrgJsonLdFromText(textVal);
+          if (cleanedText !== textVal) {
+            child.data = cleanedText;
+          }
+        }
+      } else if (child.type === 'tag') {
+        const tag = child.tagName?.toLowerCase() || '';
+        if (tag === 'pre' || tag === 'code' || tag === 'kbd' || tag === 'samp') {
+          return;
+        }
+        stripJsonLdInNode(child);
+      }
+    });
+  };
+  if ($root[0]) stripJsonLdInNode($root[0]);
+
+  // 2c. Remove pure Schema.org microdata metadata blocks (never remove [itemprop="articleBody"] or genuine content)
+  $root.find('[itemtype*="schema.org"]').each((_, el) => {
+    const $el = $(el);
+    if ($el.closest('#__import_root__').length === 0) return;
+    const itemtype = ($el.attr('itemtype') || '').toLowerCase();
+    const isArticleContainer =
+      $el.attr('itemprop') === 'articleBody' ||
+      $el.find('[itemprop="articleBody"]').length > 0;
+    if (isArticleContainer) return;
+
+    const isPureMetaSchema =
+      itemtype.includes('breadcrumblist') ||
+      itemtype.includes('imageobject') ||
+      itemtype.includes('organization') ||
+      itemtype.includes('person');
+    if (isPureMetaSchema || !containsGenuineArticleContent($, el)) {
+      $el.remove();
+    }
+  });
+
   // 3. Remove explicit ad / promo / player / social-share / related-posts / hidden widget containers
   // Always remove strict ad-network slots & imported video-player widgets (never let them leak duplicate #videoThumbnail / #container-* / Play buttons).
   // For general ambiguous containers, keep containsGenuineArticleContent guard so genuine article content is never dropped.
@@ -627,7 +676,7 @@ export function sanitizeImportedHtml(
     const isStrictAdOrPlayerWidget =
       hasAdAttr ||
       PLAYER_OR_AD_CONTAINER_ID_REGEX.test(idVal) ||
-      /(^|\s)(video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|live-viewer-badge|scroll-indicator-wrap|related-section|ad-slot-wrapper|ad-fallback|adsbygoogle|adsterra|effectivecpmnetwork)(\s|$)/i.test(
+      /(^|\s)(video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|live-viewer-badge|scroll-indicator-wrap|related-section|ad-slot-wrapper|ad-fallback|adsbygoogle|adsterra|effectivecpmnetwork|schema-markup|post-schema)(\s|$)/i.test(
         classVal
       );
 
@@ -712,14 +761,18 @@ export function sanitizeImportedHtml(
     const styleInfo = parseStyleDimensions($img.attr('style'));
     const attrWidth = parseNumericAttr($img.attr('width'));
     const attrHeight = parseNumericAttr($img.attr('height'));
+    const origWidth = parseNumericAttr($img.attr('data-original-width'));
+    const origHeight = parseNumericAttr($img.attr('data-original-height'));
+    const effectiveWidth = attrWidth ?? origWidth ?? styleInfo.width;
+    const effectiveHeight = attrHeight ?? origHeight ?? styleInfo.height;
+    const imgClass = ($img.attr('class') || '').trim();
+    const imgId = ($img.attr('id') || '').trim();
 
     // Hidden or 1x1 / 2x2 tracking pixels
     if (
       styleInfo.hidden ||
-      (attrWidth !== undefined && attrWidth <= 2) ||
-      (attrHeight !== undefined && attrHeight <= 2) ||
-      (styleInfo.width !== undefined && styleInfo.width <= 2) ||
-      (styleInfo.height !== undefined && styleInfo.height <= 2)
+      (effectiveWidth !== undefined && effectiveWidth <= 2) ||
+      (effectiveHeight !== undefined && effectiveHeight <= 2)
     ) {
       $img.remove();
       return;
@@ -730,6 +783,7 @@ export function sanitizeImportedHtml(
       $img.attr('src'),
       $img.attr('data-src'),
       $img.attr('data-original'),
+      $img.attr('data-original-src'),
       $img.attr('data-lazy-src'),
       $img.attr('data-lazyload'),
       $img.attr('data-url'),
@@ -758,21 +812,34 @@ export function sanitizeImportedHtml(
       return;
     }
 
-    // Promotional/clickable ad banner detection (removes ad banners completely while preserving genuine article images)
+    const altText = ($img.attr('alt') || '').trim();
+    const titleText = ($img.attr('title') || '').trim();
+
+    // Remove unwanted PNG icons, play buttons, logos, social badges, tracking pixels, and ad banner images
+    // while preserving genuine large article PNGs (infographics, charts, screenshots)
+    if (
+      isUnwantedUiOrAdImage({
+        src: resolvedSrc,
+        alt: altText,
+        title: titleText,
+        className: imgClass,
+        id: imgId,
+        width: effectiveWidth,
+        height: effectiveHeight,
+      })
+    ) {
+      $img.remove();
+      return;
+    }
+
+    // Promotional/clickable ad banner detection inside affiliate/smart-link <a>
     const parentAnchor = $img.closest('a');
     const parentHref = parentAnchor.length ? parentAnchor.attr('href') || '' : '';
     const cleanedParentHref = parentHref ? cleanEditorialHref(parentHref, baseUrl) || parentHref : '';
-    const altText = ($img.attr('alt') || '').trim();
-    const titleText = ($img.attr('title') || '').trim();
     const isBannerDimensions =
-      (attrWidth !== undefined && attrHeight !== undefined && attrWidth <= 180 && attrHeight <= 60) ||
-      (attrWidth === 728 && attrHeight === 90) ||
-      (attrWidth === 300 && attrHeight === 250) ||
-      (attrWidth === 468 && attrHeight === 60) ||
-      (attrWidth === 320 && attrHeight === 50) ||
-      (attrWidth === 160 && attrHeight === 600);
+      (effectiveWidth !== undefined && effectiveHeight !== undefined && effectiveWidth <= 180 && effectiveHeight <= 60);
     const isPromoFilename =
-      /(buy[-_]?now|shop[-_]?now|download[-_]?btn|subscribe[-_]?banner|ad[-_]?banner|728x90|300x250|468x60|160x600|320x50)/i.test(
+      /(buy[-_]?now|shop[-_]?now|download[-_]?btn|subscribe[-_]?banner|ad[-_]?banner)/i.test(
         `${resolvedSrc} ${altText}`
       );
 
@@ -806,17 +873,14 @@ export function sanitizeImportedHtml(
       $img.attr('height', String(Math.round(attrHeight)));
     }
 
-    const origWidth = parseNumericAttr($img.attr('data-original-width'));
-    const origHeight = parseNumericAttr($img.attr('data-original-height'));
-
     if (!seenImageUrls.has(resolvedSrc)) {
       seenImageUrls.add(resolvedSrc);
       collectedImages.push({
         src: resolvedSrc,
         srcset: normalizedSrcset,
         alt: altText,
-        width: attrWidth ?? origWidth ?? styleInfo.width,
-        height: attrHeight ?? origHeight ?? styleInfo.height,
+        width: effectiveWidth,
+        height: effectiveHeight,
       });
     }
   });

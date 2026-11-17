@@ -131,6 +131,25 @@ async function resolveSingleImageUrl(
 }
 
 /**
+ * Verifies an explicit image URL (e.g. og:image / media$thumbnail) for SSRF safety and reachability,
+ * preserving the original public CDN URL cleanly without mangling working assets.
+ */
+export async function verifyAndPreserveArticleImageUrl(
+  rawUrl: string,
+  options: {
+    baseUrl?: string;
+    callerToken?: string;
+  } = {}
+): Promise<{ url: string | null; warning?: string }> {
+  const hostConfig = getBloggerImageHostConfig();
+  return resolveSingleImageUrl(rawUrl, {
+    baseUrl: options.baseUrl,
+    callerToken: options.callerToken,
+    hasImageHost: Boolean(hostConfig.blogId),
+  });
+}
+
+/**
  * Ensures all <img> src and srcset URLs inside sanitized imported HTML are
  * SSRF-safe, HTTPS-upgraded where possible, and valid for Blogger publishing.
  */
@@ -186,7 +205,10 @@ export async function resolveAndVerifyImportedArticleImages(
         if (rawSrcset) {
           const normSrcset = normalizeSrcset(rawSrcset, options.baseUrl);
           if (normSrcset) {
-            const parts = normSrcset.split(',').map((p) => p.trim()).filter(Boolean);
+            const parts = normSrcset
+              .split(/,(?=\s*(?:https?:\/\/|\/\/|\/|data:image\/))/i)
+              .map((p) => p.trim())
+              .filter(Boolean);
             const cleanedParts: string[] = [];
 
             for (const part of parts) {

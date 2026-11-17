@@ -5,7 +5,10 @@ import { generateTitleFromCaption } from '@/src/lib/titleGenerator';
 import { verifyImage } from '@/src/server/imageVerificationService';
 import { uploadAndVerifyImageOnBloggerHost } from '@/src/server/bloggerImageHostService';
 import { sanitizeImportedHtml, decodeHtmlEntities } from '@/src/server/importedHtmlSanitizer';
-import { resolveAndVerifyImportedArticleImages } from '@/src/server/importedImageResolver';
+import {
+  resolveAndVerifyImportedArticleImages,
+  verifyAndPreserveArticleImageUrl,
+} from '@/src/server/importedImageResolver';
 import { selectMainThumbnailImage, isPngImageUrl } from '@/src/lib/mainImageSelector';
 import { sanitizeAdsSettings, isLegacyDefaultTemplate } from '@/src/lib/adsSettings';
 
@@ -162,24 +165,42 @@ export async function POST(req: NextRequest) {
           : '';
       const finalImportedTitle = rawTitle || generateTitleFromCaption(sanitized.plainText || 'Imported Post');
 
-      let primaryImg = selectMainThumbnailImage(resolved.imageDetails) || '';
-
-      const rawFallbackCandidate =
+      const rawExplicitCandidate =
         (typeof imageUrl === 'string' && imageUrl.trim().length > 0 ? imageUrl.trim() : '') ||
         (typeof thumbnailUrl === 'string' && thumbnailUrl.trim().length > 0 ? thumbnailUrl.trim() : '');
-      const fallbackImgCandidate =
-        rawFallbackCandidate && !isPngImageUrl(rawFallbackCandidate)
-          ? selectMainThumbnailImage([rawFallbackCandidate]) || ''
+      const validExplicitCandidate =
+        rawExplicitCandidate && !isPngImageUrl(rawExplicitCandidate)
+          ? selectMainThumbnailImage([{ src: rawExplicitCandidate, role: 'metadata' }]) || ''
           : '';
 
-      if (!primaryImg && fallbackImgCandidate) {
-        const httpsCandidate = fallbackImgCandidate.startsWith('http://')
-          ? `https://${fallbackImgCandidate.slice(7)}`
-          : fallbackImgCandidate;
-        const thumbCheck = await verifyImage(httpsCandidate);
-        if (thumbCheck.isValid && thumbCheck.verifiedUrl && !isPngImageUrl(thumbCheck.verifiedUrl)) {
-          primaryImg = thumbCheck.verifiedUrl;
+      let primaryImg = '';
+
+      if (validExplicitCandidate) {
+        // If explicit main image already appears in verified article images, reuse its verified URL directly
+        const alreadyVerifiedMatch = resolved.imageDetails.find(
+          (img) => img.src === validExplicitCandidate
+        );
+        if (alreadyVerifiedMatch) {
+          primaryImg = alreadyVerifiedMatch.src;
+        } else {
+          const verifiedExplicit = await verifyAndPreserveArticleImageUrl(validExplicitCandidate, {
+            baseUrl: safeBaseUrl,
+            callerToken: token,
+          });
+          if (
+            verifiedExplicit.url &&
+            !isPngImageUrl(verifiedExplicit.url) &&
+            selectMainThumbnailImage([verifiedExplicit.url])
+          ) {
+            primaryImg = verifiedExplicit.url;
+          } else if (verifiedExplicit.warning) {
+            resolved.warnings.push(verifiedExplicit.warning);
+          }
         }
+      }
+
+      if (!primaryImg) {
+        primaryImg = selectMainThumbnailImage(resolved.imageDetails) || '';
       }
 
       const selectedImgMeta =

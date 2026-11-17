@@ -7,10 +7,7 @@ import {
   renderImportedPostTemplate,
   type ImportedTemplateVariables,
 } from '../templates/BloggerPostTemplate';
-import {
-  isPngImageUrl,
-  selectMainThumbnailImageFromHtml,
-} from '../lib/mainImageSelector';
+import { isPngImageUrl } from '../lib/mainImageSelector';
 import {
   deduplicateAdScriptsAndContainers,
   ensureMasterAdConfiguration,
@@ -61,13 +58,8 @@ export function renderTemplate(
 
   const escapedTitle = escapeHtml(variables.title || '');
   const escapedCaption = escapeHtml(variables.caption || '').replace(/\n/g, '<br/>');
-  let safeImageUrl = (variables.imageUrl || '').trim().replace(/["'<>]/g, '');
-  if (!safeImageUrl || isPngImageUrl(safeImageUrl)) {
-    const recoveredFromTemplate = selectMainThumbnailImageFromHtml(rawTemplate);
-    if (recoveredFromTemplate && !isPngImageUrl(recoveredFromTemplate)) {
-      safeImageUrl = recoveredFromTemplate.trim().replace(/["'<>]/g, '');
-    }
-  }
+  const rawMainUrl = (variables.imageUrl || variables.thumbnailUrl || '').trim().replace(/["'<>\\\r\n]/g, '');
+  const safeImageUrl = rawMainUrl && !isPngImageUrl(rawMainUrl) ? rawMainUrl : '';
 
   const formattedDate =
     variables.publishedDate ||

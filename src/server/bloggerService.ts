@@ -214,13 +214,15 @@ export async function createAndPublishBloggerPost(
   return data;
 }
 
+import * as cheerio from 'cheerio';
 import {
   decodeHtmlEntities,
   normalizeImageUrl,
   sanitizeImportedHtml,
   type SanitizedArticleImage,
 } from './importedHtmlSanitizer';
-import { selectMainThumbnailImage } from '../lib/mainImageSelector';
+import { selectMainThumbnailImage, type ThumbnailCandidate } from '../lib/mainImageSelector';
+import { validateUrlForSsrf } from './imageVerificationService';
 
 export interface ImportedPostItem {
   id: string;
@@ -281,6 +283,220 @@ function normalizeBloggerSourceUrl(sourceUrl: string): { normalizedUrl: string; 
 }
 
 /**
+ * Safely upgrades tiny Blogger `media$thumbnail` size tokens (e.g. `/s72-c/`, `/w72-h72-p-k-no-nu/`,
+ * `=s72-c`, `=w72-h72-c`) to high-resolution `s1600`, while preserving full-size and non-Blogger URLs untouched.
+ */
+export function upgradeBloggerThumbnailUrl(rawUrl: string): string {
+  if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+  let upgraded = rawUrl.trim();
+
+  // Path-based Blogger thumbnail tokens: /s72-c/, /s72-w400-h225-c/, /w72-h72-p-k-no-nu/
+  upgraded = upgraded.replace(
+    /\/(?:s(\d+)(?:-[a-z0-9]+)*|w(\d+)-h(\d+)(?:-[a-z0-9]+)*)\//gi,
+    (fullMatch, sVal?: string, wVal?: string, hVal?: string) => {
+      const sNum = sVal ? parseInt(sVal, 10) : 0;
+      const wNum = wVal ? parseInt(wVal, 10) : 0;
+      const hNum = hVal ? parseInt(hVal, 10) : 0;
+      if ((sNum > 0 && sNum <= 320) || (wNum > 0 && hNum > 0 && wNum <= 320 && hNum <= 320)) {
+        return '/s1600/';
+      }
+      return fullMatch;
+    }
+  );
+
+  // Query/suffix Googleusercontent tokens: =s72-c, =w72-h72-p-k-no-nu
+  upgraded = upgraded.replace(
+    /=(?:s(\d+)(?:-[a-z0-9]+)*|w(\d+)-h(\d+)(?:-[a-z0-9]+)*)(?=[?#]|$)/gi,
+    (fullMatch, sVal?: string, wVal?: string, hVal?: string) => {
+      const sNum = sVal ? parseInt(sVal, 10) : 0;
+      const wNum = wVal ? parseInt(wVal, 10) : 0;
+      const hNum = hVal ? parseInt(hVal, 10) : 0;
+      if ((sNum > 0 && sNum <= 320) || (wNum > 0 && hNum > 0 && wNum <= 320 && hNum <= 320)) {
+        return '=s1600';
+      }
+      return fullMatch;
+    }
+  );
+
+  return upgraded;
+}
+
+function collectJsonLdImageUrls(node: unknown, out: string[]): void {
+  if (!node) return;
+  if (typeof node === 'string') {
+    out.push(node);
+    return;
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      collectJsonLdImageUrls(item, out);
+    }
+    return;
+  }
+  if (typeof node === 'object') {
+    const rec = node as Record<string, unknown>;
+    if (typeof rec.url === 'string') out.push(rec.url);
+    if (typeof rec.contentUrl === 'string') out.push(rec.contentUrl);
+    if (typeof rec.thumbnailUrl === 'string') out.push(rec.thumbnailUrl);
+    if (rec.image) collectJsonLdImageUrls(rec.image, out);
+    if (rec.primaryImageOfPage) collectJsonLdImageUrls(rec.primaryImageOfPage, out);
+    if (Array.isArray(rec['@graph'])) {
+      for (const graphItem of rec['@graph']) {
+        collectJsonLdImageUrls(graphItem, out);
+      }
+    }
+  }
+}
+
+/**
+ * Extracts `og:image`, `twitter:image`, `link[rel=image_src]`, and Schema.org JSON-LD `image`
+ * from an HTML document or fragment BEFORE sanitization strips <meta> and <script> tags.
+ */
+export function extractEmbeddedPostMetadataImages(rawHtml: string, baseUrl?: string): ThumbnailCandidate[] {
+  if (!rawHtml || typeof rawHtml !== 'string') return [];
+
+  const candidates: ThumbnailCandidate[] = [];
+  const seen = new Set<string>();
+  const addCandidate = (
+    rawUrl: string | undefined,
+    role: ThumbnailCandidate['role'],
+    width?: number,
+    height?: number
+  ) => {
+    if (!rawUrl) return;
+    const norm = normalizeImageUrl(rawUrl, baseUrl);
+    if (!norm || seen.has(norm)) return;
+    seen.add(norm);
+    candidates.push({ src: norm, role, width, height, index: candidates.length });
+  };
+
+  try {
+    const $ = cheerio.load(rawHtml);
+
+    const ogSelectors = [
+      'meta[property="og:image:secure_url"]',
+      'meta[property="og:image:url"]',
+      'meta[property="og:image"]',
+      'meta[name="og:image"]',
+      'meta[name="twitter:image:src"]',
+      'meta[name="twitter:image"]',
+      'meta[property="twitter:image"]',
+    ];
+    for (const sel of ogSelectors) {
+      $(sel).each((_, el) => {
+        const content = $(el).attr('content');
+        addCandidate(content, 'og_image');
+      });
+    }
+
+    $('link[rel="image_src"]').each((_, el) => {
+      addCandidate($(el).attr('href'), 'metadata');
+    });
+
+    $('script[type="application/ld+json"]').each((_, el) => {
+      const jsonText = $(el).html() || $(el).text() || '';
+      if (!jsonText.trim()) return;
+      try {
+        const parsed = JSON.parse(jsonText);
+        const urls: string[] = [];
+        collectJsonLdImageUrls(parsed, urls);
+        for (const u of urls) {
+          addCandidate(u, 'metadata');
+        }
+      } catch {
+        // ignore malformed JSON-LD in source HTML
+      }
+    });
+  } catch {
+    // ignore HTML parsing errors
+  }
+
+  return candidates;
+}
+
+async function fetchSourcePostPageMetaImages(postUrl?: string): Promise<ThumbnailCandidate[]> {
+  if (!postUrl || !/^https?:\/\//i.test(postUrl)) return [];
+  const httpsUrl = postUrl.startsWith('http://') ? `https://${postUrl.slice(7)}` : postUrl;
+
+  try {
+    const ssrf = await validateUrlForSsrf(httpsUrl);
+    if (!ssrf.safe) return [];
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+
+    try {
+      const res = await fetch(httpsUrl, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          Accept: 'text/html,application/xhtml+xml',
+          'User-Agent': 'Blogger-Post-Automation-AI/1.0',
+        },
+      });
+      if (!res.ok) return [];
+      const html = await res.text();
+      // Only inspect <head> + early hero section to stay fast and avoid footer/sidebar widgets
+      const headEndIdx = html.search(/<\/head>/i);
+      const headSlice = headEndIdx !== -1 ? html.slice(0, headEndIdx + 7) : html.slice(0, 65_536);
+      return extractEmbeddedPostMetadataImages(headSlice, httpsUrl);
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return [];
+  }
+}
+
+function buildMainThumbnailCandidatePool(params: {
+  pageMetaImages?: ThumbnailCandidate[];
+  embeddedMetaImages?: ThumbnailCandidate[];
+  apiImages?: Array<{ url?: string }>;
+  sanitizedImages: SanitizedArticleImage[];
+  mediaThumbnailUrl?: string;
+  baseUrl?: string;
+}): ThumbnailCandidate[] {
+  const pool: ThumbnailCandidate[] = [];
+  let idx = 0;
+
+  for (const cand of params.pageMetaImages || []) {
+    pool.push({ ...cand, index: idx++ });
+  }
+  for (const cand of params.embeddedMetaImages || []) {
+    pool.push({ ...cand, index: idx++ });
+  }
+  for (const apiImg of params.apiImages || []) {
+    if (!apiImg?.url) continue;
+    const norm = normalizeImageUrl(apiImg.url, params.baseUrl);
+    if (norm) {
+      pool.push({ src: norm, role: 'metadata', index: idx++ });
+    }
+  }
+
+  params.sanitizedImages.forEach((img, imgIdx) => {
+    pool.push({
+      ...img,
+      role: imgIdx === 0 ? 'hero' : 'article',
+      index: idx++,
+    });
+  });
+
+  if (params.mediaThumbnailUrl) {
+    const normalizedThumb = normalizeImageUrl(params.mediaThumbnailUrl, params.baseUrl);
+    if (normalizedThumb) {
+      const upgraded = upgradeBloggerThumbnailUrl(normalizedThumb);
+      pool.push({
+        src: upgraded,
+        role: 'media_thumbnail',
+        index: idx++,
+      });
+    }
+  }
+
+  return pool;
+}
+
+/**
  * Imports posts from a source Blogger site URL using Blogger API v3 (if authenticated/available)
  * or via the public Blogger Atom/JSON feed.
  */
@@ -314,7 +530,7 @@ export async function importBloggerPostsFromSource({
         const blogId = blogData.id;
         const resolvedBlogUrl = blogData.url || blogRootUrl;
 
-        let postsUrl = `https://www.googleapis.com/blogger/v3/blogs/${encodeURIComponent(blogId)}/posts?maxResults=${clampedMax}`;
+        let postsUrl = `https://www.googleapis.com/blogger/v3/blogs/${encodeURIComponent(blogId)}/posts?maxResults=${clampedMax}&fetchImages=true`;
         if (pageToken && !/^\d+$/.test(pageToken)) {
           postsUrl += `&pageToken=${encodeURIComponent(pageToken)}`;
         }
@@ -336,16 +552,38 @@ export async function importBloggerPostsFromSource({
             published: string;
             updated?: string;
             labels?: string[];
+            images?: Array<{ url?: string }>;
             author?: { displayName?: string };
           }>;
 
-          const posts: ImportedPostItem[] = rawItems.map((item) => {
-            const rawHtml = item.content || '';
-            const sanitized = sanitizeImportedHtml(rawHtml, {
-              baseUrl: item.url || resolvedBlogUrl,
+          // Fetch og:image/twitter:image page metadata in bounded batches
+          const pageMetaList: ThumbnailCandidate[][] = new Array(rawItems.length).fill([]);
+          const META_BATCH = 5;
+          for (let i = 0; i < rawItems.length; i += META_BATCH) {
+            const batch = rawItems.slice(i, i + META_BATCH);
+            const results = await Promise.all(
+              batch.map((item) => fetchSourcePostPageMetaImages(item.url))
+            );
+            results.forEach((res, offset) => {
+              pageMetaList[i + offset] = res;
             });
+          }
+
+          const posts: ImportedPostItem[] = rawItems.map((item, idx) => {
+            const rawHtml = item.content || '';
+            const baseUrl = item.url || resolvedBlogUrl;
+            const embeddedMetaImages = extractEmbeddedPostMetadataImages(rawHtml, baseUrl);
+            const sanitized = sanitizeImportedHtml(rawHtml, { baseUrl });
             const images = sanitized.images.map((img) => img.src);
-            const selectedThumb = selectMainThumbnailImage(sanitized.images) || undefined;
+
+            const candidatePool = buildMainThumbnailCandidatePool({
+              pageMetaImages: pageMetaList[idx],
+              embeddedMetaImages,
+              apiImages: item.images,
+              sanitizedImages: sanitized.images,
+              baseUrl,
+            });
+            const selectedThumb = selectMainThumbnailImage(candidatePool) || undefined;
 
             return {
               id: item.id,
@@ -443,26 +681,40 @@ export async function importBloggerPostsFromSource({
     }
 
     const entries = (feed.entry || []) as FeedEntry[];
+
+    // Fetch og:image / twitter:image metadata from post permalinks in bounded batches
+    const pageMetaList: ThumbnailCandidate[][] = new Array(entries.length).fill([]);
+    const META_BATCH = 5;
+    for (let i = 0; i < entries.length; i += META_BATCH) {
+      const batch = entries.slice(i, i + META_BATCH);
+      const results = await Promise.all(
+        batch.map((entry) => {
+          const altHref = entry.link?.find((l) => l.rel === 'alternate')?.href;
+          return fetchSourcePostPageMetaImages(altHref);
+        })
+      );
+      results.forEach((res, offset) => {
+        pageMetaList[i + offset] = res;
+      });
+    }
+
     const posts: ImportedPostItem[] = entries.map((entry, index) => {
       const rawHtml = entry.content?.$t || entry.summary?.$t || '';
       const altLink = entry.link?.find((l) => l.rel === 'alternate')?.href || blogRootUrl;
 
+      const embeddedMetaImages = extractEmbeddedPostMetadataImages(rawHtml, altLink);
       const sanitized = sanitizeImportedHtml(rawHtml, { baseUrl: altLink });
       const images = sanitized.images.map((img) => img.src);
 
-      let fallbackThumb: string | undefined;
-      if (entry.media$thumbnail?.url) {
-        const normalizedThumb = normalizeImageUrl(entry.media$thumbnail.url, altLink);
-        if (normalizedThumb) {
-          fallbackThumb = normalizedThumb.replace(/\/s72(-c)?(-k-no)?\//i, '/s1600/');
-        }
-      }
+      const candidatePool = buildMainThumbnailCandidatePool({
+        pageMetaImages: pageMetaList[index],
+        embeddedMetaImages,
+        sanitizedImages: sanitized.images,
+        mediaThumbnailUrl: entry.media$thumbnail?.url,
+        baseUrl: altLink,
+      });
 
-      const selectedThumb =
-        selectMainThumbnailImage([
-          ...sanitized.images,
-          ...(fallbackThumb ? [{ src: fallbackThumb, index: sanitized.images.length }] : []),
-        ]) || undefined;
+      const selectedThumb = selectMainThumbnailImage(candidatePool) || undefined;
 
       const labels = (entry.category || []).map((c) => c.term || '').filter(Boolean);
       const entryId = entry.id?.$t?.split('.post-')[1] || entry.id?.$t || `post_${index}_${Date.now()}`;
