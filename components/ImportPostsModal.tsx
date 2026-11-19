@@ -21,16 +21,16 @@ import {
 import type { ImportedPostItem } from '@/src/server/bloggerService';
 import { getAccessToken } from '@/src/lib/firebase';
 import { renderImportedPostTemplate } from '@/src/templates/BloggerPostTemplate';
-import { selectMainThumbnailImage, isPngImageUrl } from '@/src/lib/mainImageSelector';
+import { selectMainThumbnailImage } from '@/src/lib/mainImageSelector';
 import { sanitizeImportedArticleFragment } from '@/src/lib/importedHtmlCleaner';
 import type { AdsSettings } from '@/src/lib/adsSettings';
 
 function resolvePostMainImage(post: ImportedPostItem): string | undefined {
-  if (post.thumbnailUrl && !isPngImageUrl(post.thumbnailUrl)) {
-    const validThumb = selectMainThumbnailImage([{ src: post.thumbnailUrl, role: 'metadata' }]);
-    if (validThumb) return validThumb;
-  }
-  return selectMainThumbnailImage(post.imageDetails || post.images) || undefined;
+  const candidates = [
+    ...(post.thumbnailUrl ? [{ src: post.thumbnailUrl, role: 'og_image' as const }] : []),
+    ...(post.imageDetails || post.images),
+  ];
+  return selectMainThumbnailImage(candidates) || undefined;
 }
 
 interface ImportPostsModalProps {

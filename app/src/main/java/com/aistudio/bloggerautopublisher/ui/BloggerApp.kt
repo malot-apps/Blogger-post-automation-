@@ -2,6 +2,7 @@ package com.aistudio.bloggerautopublisher.ui
 
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,10 +13,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,7 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.aistudio.bloggerautopublisher.ui.components.AiAssistantSection
 import com.aistudio.bloggerautopublisher.ui.components.AuthCardView
 import com.aistudio.bloggerautopublisher.ui.components.HeaderSection
@@ -108,6 +115,33 @@ fun BloggerApp(viewModel: BloggerViewModel) {
                             onReset = { viewModel.resetForNewPost() }
                         )
                     } else {
+                        if (!uiState.publishError.isNullOrBlank()) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 12.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+                                border = BorderStroke(1.dp, Color(0xFFFECACA))
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = "Publishing Error",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF991B1B)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = uiState.publishError!!,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFFB91C1C),
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
+                        }
+
                         // 1. Image Uploader & Video Thumbnail
                         ImageUploaderSection(
                             mainImage = uiState.mainImage,
@@ -189,13 +223,20 @@ fun BloggerApp(viewModel: BloggerViewModel) {
             }
         }
 
+        val previewImageSource = uiState.mainImageUrlOverride
+            ?: uiState.mainImage?.base64Data?.let { b64 ->
+                "data:${uiState.mainImage!!.mimeType};base64,$b64"
+            }
+            ?: uiState.mainImage?.uri?.toString()
+            ?: ""
+
         // Modals & Dialogs
         PostPreviewDialog(
             isOpen = uiState.isPreviewOpen,
             onClose = { viewModel.closePreview() },
             title = uiState.title,
-            imageUrl = uiState.mainImageUrlOverride ?: uiState.mainImage?.uri?.toString() ?: "",
-            thumbnailUrl = uiState.mainImageUrlOverride ?: uiState.mainImage?.uri?.toString(),
+            imageUrl = previewImageSource,
+            thumbnailUrl = previewImageSource,
             caption = uiState.caption,
             template = uiState.customTemplate,
             adsSettings = uiState.adsSettings,

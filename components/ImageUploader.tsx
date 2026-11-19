@@ -17,6 +17,7 @@ import {
   formatFileSize,
   type ImageProcessingResult,
 } from '@/src/lib/imageUtils';
+import { validateImageUrlSyntax } from '@/src/lib/mainImageSelector';
 import { AiContentAssistant } from './AiContentAssistant';
 
 interface ImageUploaderProps {
@@ -72,10 +73,18 @@ export function ImageUploader({
 
   const handleApplyMainUrl = async () => {
     const trimmed = mainUrlInputValue.trim();
-    if (!trimmed || !trimmed.startsWith('https://')) {
-      setErrorMessage('Security requirement: Please enter a secure HTTPS image URL (http:// and local URLs are prohibited).');
+    const syntax = validateImageUrlSyntax(trimmed, {
+      allowDataUri: false,
+      allowHttpUpgrade: true,
+    });
+    if (!syntax.valid || !syntax.normalizedUrl) {
+      setErrorMessage(
+        syntax.reason ||
+          'Security requirement: Please enter a valid public HTTPS image URL (local/private URLs are prohibited).'
+      );
       return;
     }
+    const candidateUrl = syntax.normalizedUrl;
     setErrorMessage(null);
     setIsProcessing(true);
 
@@ -84,13 +93,13 @@ export function ImageUploader({
       const res = await fetch('/api/images/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ verifyUrl: trimmed }),
+        body: JSON.stringify({ verifyUrl: candidateUrl }),
       });
       const data = await res.json();
       if (!res.ok || !data.success || !data.verified) {
         throw new Error(data.error || 'Server-side verification failed: Image is not publicly accessible.');
       }
-      onMainImageSelected(null, data.imageUrl || trimmed);
+      onMainImageSelected(null, data.imageUrl || candidateUrl);
       setShowMainUrlInput(false);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Image verification failed';

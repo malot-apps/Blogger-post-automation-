@@ -27,7 +27,8 @@ data class ProcessedImage(
     val width: Int,
     val height: Int,
     val sizeBytes: Long,
-    val base64Data: String? = null
+    val base64Data: String? = null,
+    val mimeType: String = "image/jpeg"
 )
 
 object ImageOptimizer {

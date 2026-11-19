@@ -4,7 +4,8 @@
  * Rules enforced:
  * 1. Prioritize original Blogger post thumbnail metadata (og:image, twitter:image, JSON-LD image)
  *    and the source article hero image; use media$thumbnail strictly as a fallback.
- * 2. Never select PNG images for the main video thumbnail when a valid JPG/JPEG or photo CDN image is available.
+ * 2. Support valid JPG, JPEG, PNG, and WebP images. Prefer JPG/JPEG when available,
+ *    but NEVER reject valid PNG or WebP images.
  * 3. Ignore advertisement images, tracking pixels, logos, icons, play buttons, badges, and UI assets.
  * 4. Preserve genuine article PNG images (infographics, charts, screenshots) inside post content.
  */
@@ -30,6 +31,15 @@ export interface ThumbnailCandidate {
   index?: number;
 }
 
+export const SUPPORTED_IMAGE_MIME_TYPES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+  'image/gif',
+] as const;
+
 const AD_OR_TRACKER_URL_PATTERN =
   /(doubleclick\.net|googlesyndication\.com|googleadservices\.com|google-analytics\.com|googletagmanager\.com|googletagservices\.com|adnxs\.com|criteo\.|taboola\.com|outbrain\.com|mgid\.com|adsterra\.com|effectivecpmnetwork\.com|highperformanceformat\.com|cheflobesofficer\.com|profitablegatecpm\.com|profitablecpmrate\.com|effectiveratecpm\.com|highcpmgate\.com|highrevenuegate\.com|toprevenuegate\.com|topcreativeformat\.com|gatetocpm\.com|wayfarerorthodox\.com|propellerads\.com|popads\.net|popcash\.net|adcash\.com|monetag\.com|hilltopads\.|exoclick\.com|trafficjunky\.|juicyads\.com|clickadu\.|galaksion\.|admaven\.|evadav\.|richads\.|amazon-adsystem\.com|media\.net|revcontent\.com|statcounter\.com|histats\.com|quantserve\.com|scorecardresearch\.com|feedburner\.com\/~r\/|\/tracker\/)/i;
 
@@ -41,6 +51,9 @@ const AD_OR_UNRELATED_FILENAME_PATTERN =
 
 const EXACT_UI_ICON_FILENAME_PATTERN =
   /\/(?:logo|favicon|play|play-button|playbutton|play_button|play-icon|playicon|arrow|share|facebook|twitter|whatsapp|telegram|instagram|pinterest|linkedin|youtube|subscribe|download|watermark|badge|avatar|spinner|loader|spacer|blank|pixel|ad|ads)\.(?:png|gif|svg|ico|webp)$/i;
+
+const NON_IMAGE_EXTENSION_PATTERN =
+  /\.(?:svg|ico|html?|xhtml|js|mjs|cjs|css|json|xml|txt|pdf|mp4|webm|mkv|avi|mov|mp3|wav|woff2?|ttf|eot)$/i;
 
 const STANDARD_AD_DIMENSION_PAIRS: ReadonlyArray<[number, number]> = [
   [728, 90],
@@ -65,6 +78,43 @@ function stripQueryAndHash(url: string): string {
   return url.split('#')[0].split('?')[0].trim().toLowerCase();
 }
 
+function getFormatQueryParam(url: string): string {
+  try {
+    const parsed = new URL(url.startsWith('//') ? `https:${url}` : url);
+    return (
+      parsed.searchParams.get('format') ||
+      parsed.searchParams.get('fm') ||
+      parsed.searchParams.get('ext') ||
+      ''
+    ).toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+export function normalizeImageMimeType(mimeType?: string | null): string {
+  if (!mimeType || typeof mimeType !== 'string') return '';
+  const base = mimeType.split(';')[0].trim().toLowerCase();
+  if (base === 'image/jpg') return 'image/jpeg';
+  return base;
+}
+
+export function isSupportedImageMimeType(
+  mimeType?: string | null,
+  options: { allowGif?: boolean } = { allowGif: true }
+): boolean {
+  const normalized = normalizeImageMimeType(mimeType);
+  if (!normalized) return false;
+  if (normalized === 'image/svg+xml') return false;
+  if (normalized === 'image/gif') return options.allowGif !== false;
+  return (
+    normalized === 'image/jpeg' ||
+    normalized === 'image/png' ||
+    normalized === 'image/webp' ||
+    normalized === 'image/avif'
+  );
+}
+
 export function isPngImageUrl(url?: string | null): boolean {
   if (!url || typeof url !== 'string') return false;
   const trimmed = url.trim().toLowerCase();
@@ -75,20 +125,7 @@ export function isPngImageUrl(url?: string | null): boolean {
   const cleanPath = stripQueryAndHash(trimmed);
   if (cleanPath.endsWith('.png')) return true;
 
-  try {
-    const parsed = new URL(trimmed.startsWith('//') ? `https:${trimmed}` : trimmed);
-    const fmt = (
-      parsed.searchParams.get('format') ||
-      parsed.searchParams.get('fm') ||
-      parsed.searchParams.get('ext') ||
-      ''
-    ).toLowerCase();
-    if (fmt === 'png') return true;
-  } catch {
-    // Non-absolute URL handled by path suffix above
-  }
-
-  return false;
+  return getFormatQueryParam(trimmed) === 'png';
 }
 
 export function isJpgImageUrl(url?: string | null): boolean {
@@ -103,20 +140,34 @@ export function isJpgImageUrl(url?: string | null): boolean {
   const cleanPath = stripQueryAndHash(trimmed);
   if (cleanPath.endsWith('.jpg') || cleanPath.endsWith('.jpeg')) return true;
 
-  try {
-    const parsed = new URL(trimmed.startsWith('//') ? `https:${trimmed}` : trimmed);
-    const fmt = (
-      parsed.searchParams.get('format') ||
-      parsed.searchParams.get('fm') ||
-      parsed.searchParams.get('ext') ||
-      ''
-    ).toLowerCase();
-    if (fmt === 'jpg' || fmt === 'jpeg') return true;
-  } catch {
-    // Non-absolute URL handled by path suffix above
-  }
+  const fmt = getFormatQueryParam(trimmed);
+  return fmt === 'jpg' || fmt === 'jpeg';
+}
 
-  return false;
+export function isWebpImageUrl(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim().toLowerCase();
+  if (!trimmed) return false;
+
+  if (trimmed.startsWith('data:image/webp')) return true;
+
+  const cleanPath = stripQueryAndHash(trimmed);
+  if (cleanPath.endsWith('.webp')) return true;
+
+  return getFormatQueryParam(trimmed) === 'webp';
+}
+
+export function isAvifImageUrl(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim().toLowerCase();
+  if (!trimmed) return false;
+
+  if (trimmed.startsWith('data:image/avif')) return true;
+
+  const cleanPath = stripQueryAndHash(trimmed);
+  if (cleanPath.endsWith('.avif')) return true;
+
+  return getFormatQueryParam(trimmed) === 'avif';
 }
 
 export function isGenuinePhotoCdnUrl(url?: string | null): boolean {
@@ -131,25 +182,90 @@ export function isGenuinePhotoCdnUrl(url?: string | null): boolean {
 
 export function isDisallowedNonThumbnailFormat(url?: string | null): boolean {
   if (!url || typeof url !== 'string') return true;
-  const trimmed = url.trim().toLowerCase();
+  const trimmed = url.trim();
   if (!trimmed) return true;
+  const lower = trimmed.toLowerCase();
 
+  if (lower.includes('{{') && lower.includes('}}')) return true;
+
+  // Never allow local filesystem URIs, app content URIs, blob URLs, or executable schemes
   if (
-    trimmed.startsWith('data:image/svg+xml') ||
-    trimmed.startsWith('data:image/gif;base64,r0lgod') ||
-    trimmed.startsWith('data:text/')
+    lower.startsWith('file:') ||
+    lower.startsWith('content:') ||
+    lower.startsWith('blob:') ||
+    lower.startsWith('javascript:') ||
+    lower.startsWith('vbscript:')
   ) {
     return true;
   }
 
-  if (isPngImageUrl(trimmed)) return true;
+  if (lower.startsWith('data:')) {
+    if (
+      lower.startsWith('data:image/svg+xml') ||
+      lower.startsWith('data:image/gif;base64,r0lgod') ||
+      lower.startsWith('data:text/')
+    ) {
+      return true;
+    }
+    // Allow valid raster data URLs (jpeg, jpg, png, webp, avif, non-tracking gif)
+    return !/^data:image\/(?:jpe?g|png|webp|avif|gif);base64,/i.test(lower);
+  }
 
-  const cleanPath = stripQueryAndHash(trimmed);
-  if (cleanPath.endsWith('.svg') || cleanPath.endsWith('.ico')) {
+  const cleanPath = stripQueryAndHash(lower);
+  if (NON_IMAGE_EXTENSION_PATTERN.test(cleanPath)) {
     return true;
   }
 
   return false;
+}
+
+export function validateImageUrlSyntax(
+  url?: string | null,
+  options: { allowDataUri?: boolean; allowHttpUpgrade?: boolean } = {}
+): { valid: boolean; normalizedUrl?: string; reason?: string } {
+  const { allowDataUri = false, allowHttpUpgrade = true } = options;
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    return { valid: false, reason: 'Image URL is empty.' };
+  }
+
+  const trimmed = url.trim();
+  if (trimmed.includes('{{') || /["'<>\\\r\n]/.test(trimmed)) {
+    return { valid: false, reason: 'Image URL contains invalid or unresolved characters.' };
+  }
+
+  if (trimmed.startsWith('data:')) {
+    if (!allowDataUri) {
+      return { valid: false, reason: 'Data URI must be uploaded to obtain a public HTTPS image URL.' };
+    }
+    if (isDisallowedNonThumbnailFormat(trimmed)) {
+      return { valid: false, reason: 'Unsupported data URI image format (allowed: JPG, JPEG, PNG, WebP, AVIF).' };
+    }
+    return { valid: true, normalizedUrl: trimmed };
+  }
+
+  if (isDisallowedNonThumbnailFormat(trimmed)) {
+    return { valid: false, reason: 'Unsupported or local image URI format.' };
+  }
+
+  let candidate = trimmed;
+  if (candidate.startsWith('//')) {
+    candidate = `https:${candidate}`;
+  } else if (allowHttpUpgrade && candidate.startsWith('http://')) {
+    candidate = `https://${candidate.slice(7)}`;
+  }
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return { valid: false, reason: `Unsupported protocol '${parsed.protocol}'.` };
+    }
+    if (!parsed.hostname || parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      return { valid: false, reason: 'Local/loopback image hostnames cannot be published to Blogger.' };
+    }
+    return { valid: true, normalizedUrl: parsed.toString() };
+  } catch {
+    return { valid: false, reason: 'Malformed image URL.' };
+  }
 }
 
 export function inferDimensionsFromUrl(url: string): { width?: number; height?: number } {
@@ -170,6 +286,18 @@ export function inferDimensionsFromUrl(url: string): { width?: number; height?: 
   if (eqSMatch) {
     const size = parseInt(eqSMatch[1], 10);
     return { width: size, height: size };
+  }
+  try {
+    const parsed = new URL(url.startsWith('//') ? `https:${url}` : url);
+    const wParam = parsed.searchParams.get('w') || parsed.searchParams.get('width');
+    const hParam = parsed.searchParams.get('h') || parsed.searchParams.get('height');
+    const qw = wParam && /^\d+$/.test(wParam) ? parseInt(wParam, 10) : undefined;
+    const qh = hParam && /^\d+$/.test(hParam) ? parseInt(hParam, 10) : undefined;
+    if (qw !== undefined || qh !== undefined) {
+      return { width: qw, height: qh };
+    }
+  } catch {
+    // ignore URL parse errors
   }
   return {};
 }
@@ -284,13 +412,13 @@ function getRolePriorityBonus(role: ThumbnailCandidateRole | undefined, orderInd
     case 'metadata':
       return 20_000;
     case 'hero':
-      return 14_000;
+      return 10_000;
     case 'article':
       return Math.max(2_000, 6_000 - orderIndex * 250);
     case 'media_thumbnail':
       return 1_000;
     default:
-      return orderIndex === 0 ? 12_000 : Math.max(2_000, 6_000 - orderIndex * 250);
+      return orderIndex === 0 ? 10_000 : Math.max(2_000, 6_000 - orderIndex * 250);
   }
 }
 
@@ -298,17 +426,21 @@ function scoreCandidate(candidate: ThumbnailCandidate, orderIndex: number): numb
   const src = candidate.src.trim();
   let score = getRolePriorityBonus(candidate.role, orderIndex);
 
-  // Format priority: JPG/JPEG gets highest bonus; extensionless CDN photos keep strong priority; GIF penalized
+  // Format priority: JPG/JPEG gets highest bonus; extensionless CDN photos next; WebP/AVIF next; valid PNG preserved cleanly; GIF penalized
   if (isJpgImageUrl(src)) {
-    score += 4_000;
+    score += 6_500;
+  } else if (isWebpImageUrl(src) || isAvifImageUrl(src)) {
+    score += 3_500;
+  } else if (isPngImageUrl(src)) {
+    score += 2_000;
   } else {
     const cleanPath = stripQueryAndHash(src);
     if (cleanPath.endsWith('.gif')) {
       score -= 2_000;
     } else if (isGenuinePhotoCdnUrl(src)) {
-      score += 3_000;
+      score += 4_500;
     } else {
-      score += 1_000;
+      score += 1_500;
     }
   }
 
@@ -341,15 +473,15 @@ function scoreCandidate(candidate: ThumbnailCandidate, orderIndex: number): numb
 }
 
 /**
- * Selects the best Main Post Image URL to serve as the Blogger post thumbnail.
+ * Selects the ordered list of valid Main Post Image candidates (best first).
  * - Prioritizes og:image / source post thumbnail metadata & top hero image; media$thumbnail is strictly fallback.
- * - Never selects PNG images (e.g., "119514.png") when selecting thumbnails.
+ * - Supports valid JPG, JPEG, PNG, and WebP images; prefers JPG/JPEG when available without rejecting valid PNGs.
  * - Ignores ads, tracking pixels, icons, logos, play buttons, and unrelated embedded images.
  */
-export function selectMainThumbnailImage(
+export function rankMainThumbnailCandidates(
   candidates: Array<string | ThumbnailCandidate | null | undefined>,
   options: { jpgOnly?: boolean } = {}
-): string | null {
+): string[] {
   const normalizedList: ThumbnailCandidate[] = [];
   const seen = new Set<string>();
 
@@ -363,10 +495,9 @@ export function selectMainThumbnailImage(
     if (!src || seen.has(src)) continue;
     seen.add(src);
 
-    // Strict Rule: NEVER select PNG images or disallowed formats as post thumbnail
     if (isDisallowedNonThumbnailFormat(src)) continue;
 
-    // Strict Rule: Ignore ads, trackers, logos, play buttons, icons, and unrelated images
+    // Ignore ads, trackers, logos, play buttons, icons, and unrelated images
     if (isAdOrUnrelatedImageCandidate(candidate)) continue;
 
     if (options.jpgOnly && !isJpgImageUrl(src)) continue;
@@ -374,26 +505,29 @@ export function selectMainThumbnailImage(
     normalizedList.push(candidate);
   }
 
-  if (normalizedList.length === 0) return null;
+  if (normalizedList.length === 0) return [];
 
-  // Prefer JPG/JPEG or extensionless genuine photo CDN URLs (e.g. Blogger modern URLs) over WebP/GIF
-  const highPriorityPhotoPool = normalizedList.filter(
-    (c) => isJpgImageUrl(c.src) || isGenuinePhotoCdnUrl(c.src)
-  );
-  const pool = highPriorityPhotoPool.length > 0 ? highPriorityPhotoPool : normalizedList;
+  return normalizedList
+    .map((candidate, idx) => ({
+      src: candidate.src.trim(),
+      score: scoreCandidate(candidate, idx),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((item) => item.src);
+}
 
-  let bestCandidate = pool[0];
-  let bestScore = scoreCandidate(bestCandidate, 0);
-
-  for (let i = 1; i < pool.length; i++) {
-    const score = scoreCandidate(pool[i], i);
-    if (score > bestScore) {
-      bestScore = score;
-      bestCandidate = pool[i];
-    }
-  }
-
-  return bestCandidate.src.trim();
+/**
+ * Selects the best Main Post Image URL to serve as the Blogger post thumbnail.
+ * - Prioritizes og:image / source post thumbnail metadata & top hero image; media$thumbnail is strictly fallback.
+ * - Prefers JPG/JPEG images when available while preserving valid PNG and WebP images.
+ * - Ignores ads, tracking pixels, icons, logos, play buttons, and unrelated embedded images.
+ */
+export function selectMainThumbnailImage(
+  candidates: Array<string | ThumbnailCandidate | null | undefined>,
+  options: { jpgOnly?: boolean } = {}
+): string | null {
+  const ranked = rankMainThumbnailCandidates(candidates, options);
+  return ranked.length > 0 ? ranked[0] : null;
 }
 
 function extractFirstSrcFromSrcset(srcset?: string | null): string {

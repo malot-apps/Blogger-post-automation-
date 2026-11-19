@@ -52,6 +52,7 @@ async function resolveSingleImageUrl(
     baseUrl?: string;
     callerToken?: string;
     hasImageHost: boolean;
+    fallbackHostBlogId?: string;
   }
 ): Promise<{ url: string | null; warning?: string }> {
   const normalized = normalizeImageUrl(rawUrl, options.baseUrl);
@@ -61,11 +62,12 @@ async function resolveSingleImageUrl(
 
   // Handle inline data:image/* if present
   if (normalized.startsWith('data:image/')) {
-    if (options.hasImageHost && options.callerToken) {
+    if ((options.hasImageHost || options.fallbackHostBlogId) && options.callerToken) {
       const uploaded = await uploadAndVerifyImageOnBloggerHost({
         imageBase64OrDataUrl: normalized,
         fileName: 'imported-article-image.jpg',
         callerBearerToken: options.callerToken,
+        fallbackHostBlogId: options.fallbackHostBlogId,
       });
       if (uploaded.success && uploaded.verified && uploaded.imageUrl) {
         return { url: uploaded.imageUrl };
@@ -139,6 +141,7 @@ export async function verifyAndPreserveArticleImageUrl(
   options: {
     baseUrl?: string;
     callerToken?: string;
+    fallbackHostBlogId?: string;
   } = {}
 ): Promise<{ url: string | null; warning?: string }> {
   const hostConfig = getBloggerImageHostConfig();
@@ -146,6 +149,7 @@ export async function verifyAndPreserveArticleImageUrl(
     baseUrl: options.baseUrl,
     callerToken: options.callerToken,
     hasImageHost: Boolean(hostConfig.blogId),
+    fallbackHostBlogId: options.fallbackHostBlogId,
   });
 }
 
@@ -158,6 +162,7 @@ export async function resolveAndVerifyImportedArticleImages(
   options: {
     baseUrl?: string;
     callerToken?: string;
+    fallbackHostBlogId?: string;
   } = {}
 ): Promise<ImportedImageResolutionResult> {
   if (!sanitizedHtml || !sanitizedHtml.includes('<img')) {
@@ -195,6 +200,7 @@ export async function resolveAndVerifyImportedArticleImages(
               baseUrl: options.baseUrl,
               callerToken: options.callerToken,
               hasImageHost,
+              fallbackHostBlogId: options.fallbackHostBlogId,
             })
           : { url: null };
 

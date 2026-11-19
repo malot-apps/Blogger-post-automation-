@@ -1,5 +1,5 @@
 import { verifyPublicImageUrl, ImageVerificationResult } from './imageVerificationService';
-import { selectMainThumbnailImage } from '../lib/mainImageSelector';
+import { selectMainThumbnailImage, normalizeImageMimeType } from '../lib/mainImageSelector';
 
 /**
  * ARCHITECTURAL COMMENT #1:
@@ -37,6 +37,7 @@ export interface HostedImageUploadResult {
     contentLength?: number;
     hostBlogId: string;
     postId?: string;
+    usedFallbackHost?: boolean;
   };
 }
 
@@ -114,6 +115,13 @@ export async function getEffectiveBloggerToken(callerBearerToken?: string | null
   );
 }
 
+function normalizeExtractedCdnUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('//')) return `https:${trimmed}`;
+  if (trimmed.startsWith('http://')) return `https://${trimmed.slice(7)}`;
+  return trimmed;
+}
+
 /**
  * Extracts all image URLs from a Blogger post's JSON response and HTML content.
  */
@@ -124,19 +132,19 @@ function extractBloggerImageUrls(postData: Record<string, unknown>): string[] {
   if (Array.isArray(postData.images)) {
     for (const img of postData.images) {
       if (img && typeof img === 'object' && typeof (img as { url?: string }).url === 'string') {
-        const u = (img as { url: string }).url.trim();
-        if (u.startsWith('https://')) urls.push(u);
+        const u = normalizeExtractedCdnUrl((img as { url: string }).url);
+        if (u.startsWith('https://') && !urls.includes(u)) urls.push(u);
       }
     }
   }
 
   // Also parse post content HTML for Google CDN image src
   if (typeof postData.content === 'string') {
-    const regex = /<img[^>]+src=["'](https:\/\/[^"']+)["']/gi;
+    const regex = /<img[^>]+src=["']((?:https?:)?\/\/[^"']+)["']/gi;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(postData.content)) !== null) {
-      const foundUrl = match[1].trim();
-      if (!urls.includes(foundUrl)) {
+      const foundUrl = normalizeExtractedCdnUrl(match[1]);
+      if (foundUrl.startsWith('https://') && !urls.includes(foundUrl)) {
         urls.push(foundUrl);
       }
     }
@@ -146,7 +154,7 @@ function extractBloggerImageUrls(postData: Record<string, unknown>): string[] {
 }
 
 /**
- * Uploads an image to the dedicated secondary Blogger image-host blog,
+ * Uploads an image to the dedicated secondary Blogger image-host blog (or target draft fallback),
  * retrieves the Blogger-generated public Google CDN URL, and verifies
  * its public accessibility before returning.
  */
@@ -156,15 +164,18 @@ export async function uploadAndVerifyImageOnBloggerHost({
   fileName = 'asset.jpg',
   callerBearerToken,
   targetHostBlogId,
+  fallbackHostBlogId,
 }: {
   imageBase64OrDataUrl: string;
   mimeType?: string;
   fileName?: string;
   callerBearerToken?: string | null;
   targetHostBlogId?: string;
+  fallbackHostBlogId?: string;
 }): Promise<HostedImageUploadResult> {
   const config = getBloggerImageHostConfig();
-  const hostBlogId = targetHostBlogId || config.blogId;
+  const hostBlogId = targetHostBlogId?.trim() || config.blogId || fallbackHostBlogId?.trim() || '';
+  const usedFallbackHost = !targetHostBlogId?.trim() && !config.blogId && Boolean(fallbackHostBlogId?.trim());
 
   if (!hostBlogId) {
     return {
@@ -177,23 +188,23 @@ export async function uploadAndVerifyImageOnBloggerHost({
 
   // 1. Prepare clean base64 and data URL
   let cleanBase64 = imageBase64OrDataUrl.trim();
-  let effectiveMime = mimeType.toLowerCase();
+  let effectiveMime = normalizeImageMimeType(mimeType);
 
   if (cleanBase64.startsWith('data:')) {
     const match = cleanBase64.match(/^data:([^;]+);base64,(.+)$/);
     if (match) {
-      effectiveMime = match[1].toLowerCase();
+      effectiveMime = normalizeImageMimeType(match[1]);
       cleanBase64 = match[2];
     }
   }
 
-  // 2. Validate file type
+  // 2. Validate file type (JPG, JPEG, PNG, WebP, GIF, AVIF)
   const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
   if (!allowedMimes.includes(effectiveMime)) {
     return {
       success: false,
       verified: false,
-      error: `Unsupported image MIME type '${effectiveMime}'. Allowed types: ${allowedMimes.join(', ')}`,
+      error: `Unsupported image MIME type '${effectiveMime}'. Allowed types: image/jpeg, image/jpg, image/png, image/webp, image/gif, image/avif`,
     };
   }
 
@@ -275,11 +286,11 @@ export async function uploadAndVerifyImageOnBloggerHost({
       success: false,
       verified: false,
       error: 'Blogger image host processed the upload but did not return a public Google CDN image URL.',
-      details: { hostBlogId, postId },
+      details: { hostBlogId, postId, usedFallbackHost },
     };
   }
 
-  // Select primary Blogger-generated CDN URL (preferring JPG/JPEG and ignoring PNGs/ads)
+  // Select primary Blogger-generated CDN URL (preferring JPG/JPEG while supporting valid PNG/WebP)
   const candidateUrl = selectMainThumbnailImage(extractedUrls) || extractedUrls[0];
 
   // 7. Verify the Blogger-generated URL server-side (SSRF, HTTPS, 2xx, image/*)
@@ -300,6 +311,7 @@ export async function uploadAndVerifyImageOnBloggerHost({
         hostBlogId,
         postId,
         contentType: verification.contentType,
+        usedFallbackHost,
       },
     };
   }
@@ -313,6 +325,7 @@ export async function uploadAndVerifyImageOnBloggerHost({
       contentLength: verification.contentLength,
       hostBlogId,
       postId,
+      usedFallbackHost,
     },
   };
 }

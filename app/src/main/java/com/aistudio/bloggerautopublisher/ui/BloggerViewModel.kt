@@ -13,9 +13,7 @@ import com.aistudio.bloggerautopublisher.repository.BloggerRepository
 import com.aistudio.bloggerautopublisher.template.BloggerTemplateEngine
 import com.aistudio.bloggerautopublisher.util.ImageOptimizer
 import com.aistudio.bloggerautopublisher.util.MainImageSelector
-import com.aistudio.bloggerautopublisher.util.ThumbnailCandidate
 import com.aistudio.bloggerautopublisher.util.TitleGenerator
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -170,10 +168,18 @@ class BloggerViewModel(
     }
 
     fun onSetMainImageUrl(url: String) {
+        val trimmed = url.trim()
+        val validation = MainImageSelector.validateImageUrlSyntax(trimmed, allowDataUri = false, allowHttpUpgrade = true)
+        val normalized = if (validation.valid && !validation.normalizedUrl.isNullOrBlank()) {
+            validation.normalizedUrl
+        } else {
+            trimmed
+        }
         _uiState.update {
             it.copy(
-                mainImageUrlOverride = url.trim(),
-                mainImage = null
+                mainImageUrlOverride = normalized,
+                mainImage = null,
+                publishError = null
             )
         }
     }
@@ -195,18 +201,27 @@ class BloggerViewModel(
                 it.copy(
                     thumbnailImage = processed,
                     thumbnailUrlOverride = null,
-                    useSeparateThumbnail = true
+                    useSeparateThumbnail = true,
+                    publishError = null
                 )
             }
         }
     }
 
     fun onSetThumbnailUrl(url: String) {
+        val trimmed = url.trim()
+        val validation = MainImageSelector.validateImageUrlSyntax(trimmed, allowDataUri = false, allowHttpUpgrade = true)
+        val normalized = if (validation.valid && !validation.normalizedUrl.isNullOrBlank()) {
+            validation.normalizedUrl
+        } else {
+            trimmed
+        }
         _uiState.update {
             it.copy(
-                thumbnailUrlOverride = url.trim(),
+                thumbnailUrlOverride = normalized,
                 thumbnailImage = null,
-                useSeparateThumbnail = true
+                useSeparateThumbnail = true,
+                publishError = null
             )
         }
     }
@@ -420,34 +435,77 @@ class BloggerViewModel(
         _uiState.update { it.copy(isGuideOpen = false) }
     }
 
+    fun clearPublishError() {
+        _uiState.update { it.copy(publishError = null) }
+    }
+
+    private suspend fun resolveAndVerifyCandidateUrl(
+        token: String,
+        blogId: String,
+        rawUrl: String?,
+        base64Data: String?,
+        mimeType: String = "image/jpeg",
+        fileName: String = "main-post-image.jpg"
+    ): Pair<String?, String?> {
+        if (!base64Data.isNullOrBlank()) {
+            val uploadResult = BloggerApiService.uploadImageToBloggerHost(
+                accessToken = token,
+                hostBlogId = blogId,
+                imageBase64OrDataUrl = base64Data,
+                mimeType = mimeType,
+                fileName = fileName
+            )
+            return if (uploadResult.success && uploadResult.verified && !uploadResult.imageUrl.isNullOrBlank()) {
+                uploadResult.imageUrl to null
+            } else {
+                null to (uploadResult.error ?: "Failed to upload and verify Main Image on Blogger CDN.")
+            }
+        }
+
+        if (rawUrl.isNullOrBlank()) {
+            return null to null
+        }
+
+        val syntax = MainImageSelector.validateImageUrlSyntax(
+            rawUrl,
+            allowDataUri = true,
+            allowHttpUpgrade = true
+        )
+        if (!syntax.valid || syntax.normalizedUrl.isNullOrBlank()) {
+            return null to (syntax.reason ?: "Invalid image URL.")
+        }
+
+        val normalized = syntax.normalizedUrl
+        if (normalized.startsWith("data:image/", ignoreCase = true)) {
+            val uploadResult = BloggerApiService.uploadImageToBloggerHost(
+                accessToken = token,
+                hostBlogId = blogId,
+                imageBase64OrDataUrl = normalized,
+                mimeType = mimeType,
+                fileName = fileName
+            )
+            return if (uploadResult.success && uploadResult.verified && !uploadResult.imageUrl.isNullOrBlank()) {
+                uploadResult.imageUrl to null
+            } else {
+                null to (uploadResult.error ?: "Failed to upload data URI image to Blogger CDN.")
+            }
+        }
+
+        val verification = BloggerApiService.verifyPublicImageUrl(normalized, allowSvg = false)
+        return if (verification.isValid && !verification.verifiedUrl.isNullOrBlank()) {
+            verification.verifiedUrl to null
+        } else {
+            null to (verification.error ?: "Image URL is not publicly accessible.")
+        }
+    }
+
     fun publishPost() {
         val state = _uiState.value
         val effectiveTitle = if (state.title.isNotBlank()) {
-            state.title
+            state.title.trim()
         } else {
             TitleGenerator.generateTitleFromCaption(state.caption)
         }
-
-        val rawMainUrl = state.mainImageUrlOverride
-            ?: state.mainImage?.uri?.toString()
-            ?: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=1200&q=80"
-
-        val effectiveImageUrl = MainImageSelector.selectMainThumbnailImage(
-            listOf(ThumbnailCandidate(src = rawMainUrl))
-        ) ?: MainImageSelector.selectMainThumbnailImageFromHtml(state.customTemplate)
-            ?: rawMainUrl
-
-        val effectiveThumbUrl = effectiveImageUrl
-
-        val postHtml = BloggerTemplateEngine.renderTemplate(
-            template = state.customTemplate,
-            title = effectiveTitle,
-            imageUrl = effectiveImageUrl,
-            thumbnailUrl = effectiveThumbUrl,
-            caption = state.caption,
-            adsSettings = state.adsSettings
-        )
-
         val labelsList = state.labels.split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
         viewModelScope.launch {
@@ -459,19 +517,6 @@ class BloggerViewModel(
                 )
             }
 
-            // Step 1: Optimizing image
-            delay(500)
-            _uiState.update { it.copy(publishStep = 2) }
-
-            // Step 2: Formatting Blogger Template
-            delay(500)
-            _uiState.update { it.copy(publishStep = 3) }
-
-            // Step 3: Connecting to Blogger API v3
-            delay(600)
-            _uiState.update { it.copy(publishStep = 4) }
-
-            // Step 4: Finalizing live post via real Blogger API v3
             try {
                 val token = repository.accessToken.value
                 if (token.isNullOrBlank()) {
@@ -481,15 +526,90 @@ class BloggerViewModel(
                     throw Exception("Please select a Blogger destination blog first.")
                 }
 
+                // Step 1: Upload local images to Blogger CDN & verify public HTTPS URL + image MIME type
+                var verifiedImageUrl: String? = null
+                var lastFailureReason: String? = null
+
+                val candidates = buildList {
+                    if (!state.mainImageUrlOverride.isNullOrBlank() || state.mainImage != null) {
+                        add(
+                            Triple(
+                                state.mainImageUrlOverride,
+                                state.mainImage?.base64Data,
+                                state.mainImage?.mimeType ?: "image/jpeg"
+                            )
+                        )
+                    }
+                    if (!state.thumbnailUrlOverride.isNullOrBlank() || state.thumbnailImage != null) {
+                        add(
+                            Triple(
+                                state.thumbnailUrlOverride,
+                                state.thumbnailImage?.base64Data,
+                                state.thumbnailImage?.mimeType ?: "image/jpeg"
+                            )
+                        )
+                    }
+                    val templateFallback = MainImageSelector.selectMainThumbnailImageFromHtml(state.customTemplate)
+                    if (!templateFallback.isNullOrBlank()) {
+                        add(Triple(templateFallback, null, "image/jpeg"))
+                    }
+                }
+
+                for ((rawUrl, base64Data, mimeType) in candidates) {
+                    val ext = when (MainImageSelector.normalizeImageMimeType(mimeType)) {
+                        "image/png" -> "png"
+                        "image/webp" -> "webp"
+                        "image/avif" -> "avif"
+                        else -> "jpg"
+                    }
+                    val (resolved, err) = resolveAndVerifyCandidateUrl(
+                        token = token,
+                        blogId = state.selectedBlogId,
+                        rawUrl = rawUrl,
+                        base64Data = base64Data,
+                        mimeType = mimeType,
+                        fileName = "main-post-image.$ext"
+                    )
+                    if (!resolved.isNullOrBlank()) {
+                        verifiedImageUrl = resolved
+                        break
+                    }
+                    if (!err.isNullOrBlank()) {
+                        lastFailureReason = err
+                    }
+                }
+
+                if (verifiedImageUrl.isNullOrBlank()) {
+                    throw Exception(
+                        "Publishing blocked: Main Post Image verification failed. ${lastFailureReason ?: "Please select a valid JPG, JPEG, PNG, or WebP image."}"
+                    )
+                }
+
+                // Step 2: Formatting Blogger Master Template with verified {{IMAGE_URL}} & {{THUMBNAIL_URL}}
+                _uiState.update { it.copy(publishStep = 2) }
+                val postHtml = BloggerTemplateEngine.renderTemplate(
+                    template = state.customTemplate,
+                    title = effectiveTitle,
+                    imageUrl = verifiedImageUrl,
+                    thumbnailUrl = verifiedImageUrl,
+                    caption = state.caption.trim(),
+                    adsSettings = state.adsSettings
+                )
+
+                // Step 3: Connecting to Blogger API v3
+                _uiState.update { it.copy(publishStep = 3) }
+
+                // Step 4: Publishing & finalizing live post via Blogger API v3
+                _uiState.update { it.copy(publishStep = 4) }
                 val published = BloggerApiService.publishPost(
                     accessToken = token,
                     blogId = state.selectedBlogId,
                     title = effectiveTitle,
                     content = postHtml,
                     labels = labelsList,
-                    imageUrl = effectiveImageUrl,
-                    thumbnailUrl = effectiveThumbUrl,
-                    caption = state.caption
+                    imageUrl = verifiedImageUrl,
+                    thumbnailUrl = verifiedImageUrl,
+                    caption = state.caption.trim()
                 )
 
                 repository.addPublishedPost(published)
@@ -497,7 +617,8 @@ class BloggerViewModel(
                     it.copy(
                         isPublishing = false,
                         publishedPost = published,
-                        isPreviewOpen = false
+                        isPreviewOpen = false,
+                        publishError = null
                     )
                 }
             } catch (e: Exception) {

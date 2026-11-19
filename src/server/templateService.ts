@@ -8,7 +8,7 @@ import {
   renderImportedPostTemplate,
   type ImportedTemplateVariables,
 } from '../templates/BloggerPostTemplate';
-import { isPngImageUrl } from '../lib/mainImageSelector';
+import { isDisallowedNonThumbnailFormat } from '../lib/mainImageSelector';
 import {
   deduplicateAdScriptsAndContainers,
   ensureMasterAdConfiguration,
@@ -61,8 +61,14 @@ export function renderTemplate(
 
   const escapedTitle = escapeHtml(variables.title || '');
   const escapedCaption = escapeHtml(variables.caption || '').replace(/\n/g, '<br/>');
-  const rawMainUrl = (variables.imageUrl || variables.thumbnailUrl || '').trim().replace(/["'<>\\\r\n]/g, '');
-  const safeImageUrl = rawMainUrl && !isPngImageUrl(rawMainUrl) ? rawMainUrl : '';
+  const rawMainUrl = (variables.imageUrl || '').trim().replace(/["'<>\\\r\n]/g, '');
+  const rawThumbFallback = (variables.thumbnailUrl || '').trim().replace(/["'<>\\\r\n]/g, '');
+  const safeImageUrl =
+    rawMainUrl && !isDisallowedNonThumbnailFormat(rawMainUrl)
+      ? rawMainUrl
+      : rawThumbFallback && !isDisallowedNonThumbnailFormat(rawThumbFallback)
+        ? rawThumbFallback
+        : '';
 
   const formattedDate =
     variables.publishedDate ||

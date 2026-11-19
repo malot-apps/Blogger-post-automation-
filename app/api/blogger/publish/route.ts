@@ -9,8 +9,29 @@ import {
   resolveAndVerifyImportedArticleImages,
   verifyAndPreserveArticleImageUrl,
 } from '@/src/server/importedImageResolver';
-import { selectMainThumbnailImage, isPngImageUrl } from '@/src/lib/mainImageSelector';
+import {
+  selectMainThumbnailImage,
+  rankMainThumbnailCandidates,
+  validateImageUrlSyntax,
+  normalizeImageMimeType,
+} from '@/src/lib/mainImageSelector';
 import { sanitizeAdsSettings, isLegacyDefaultTemplate } from '@/src/lib/adsSettings';
+
+function inferMimeAndExtFromDataUrl(dataUrl: string): { mimeType: string; ext: string } {
+  const match = dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,/i);
+  const mime = normalizeImageMimeType(match?.[1] || 'image/jpeg') || 'image/jpeg';
+  const ext =
+    mime === 'image/png'
+      ? 'png'
+      : mime === 'image/webp'
+        ? 'webp'
+        : mime === 'image/avif'
+          ? 'avif'
+          : mime === 'image/gif'
+            ? 'gif'
+            : 'jpg';
+  return { mimeType: mime, ext };
+}
 
 /**
  * ARCHITECTURAL COMMENT #1:
@@ -156,6 +177,7 @@ export async function POST(req: NextRequest) {
       const resolved = await resolveAndVerifyImportedArticleImages(sanitized.html, {
         baseUrl: safeBaseUrl,
         callerToken: token,
+        fallbackHostBlogId: blogId,
       });
 
       if (!resolved.html || resolved.html.trim().length === 0) {
@@ -174,34 +196,41 @@ export async function POST(req: NextRequest) {
       const rawExplicitCandidate =
         (typeof imageUrl === 'string' && imageUrl.trim().length > 0 ? imageUrl.trim() : '') ||
         (typeof thumbnailUrl === 'string' && thumbnailUrl.trim().length > 0 ? thumbnailUrl.trim() : '');
-      const validExplicitCandidate =
-        rawExplicitCandidate && !isPngImageUrl(rawExplicitCandidate)
-          ? selectMainThumbnailImage([{ src: rawExplicitCandidate, role: 'metadata' }]) || ''
-          : '';
+      const validExplicitCandidate = rawExplicitCandidate
+        ? selectMainThumbnailImage([{ src: rawExplicitCandidate, role: 'metadata' }]) || ''
+        : '';
+
+      // Prioritized fallback pool across explicit metadata, verified article images, and sanitized article candidates
+      // (prefers JPG/JPEG when available while preserving valid PNG and WebP thumbnails)
+      const orderedCandidates: string[] = [];
+      for (const cand of [
+        validExplicitCandidate,
+        ...rankMainThumbnailCandidates(resolved.imageDetails),
+        ...rankMainThumbnailCandidates(sanitized.images),
+      ]) {
+        if (cand && !orderedCandidates.includes(cand)) {
+          orderedCandidates.push(cand);
+        }
+      }
 
       let primaryImg = '';
-
-      if (validExplicitCandidate) {
-        // If explicit main image already appears in verified article images, reuse its verified URL directly
-        const alreadyVerifiedMatch = resolved.imageDetails.find(
-          (img) => img.src === validExplicitCandidate
-        );
+      for (const candidate of orderedCandidates) {
+        const alreadyVerifiedMatch = resolved.imageDetails.find((img) => img.src === candidate);
         if (alreadyVerifiedMatch) {
           primaryImg = alreadyVerifiedMatch.src;
-        } else {
-          const verifiedExplicit = await verifyAndPreserveArticleImageUrl(validExplicitCandidate, {
-            baseUrl: safeBaseUrl,
-            callerToken: token,
-          });
-          if (
-            verifiedExplicit.url &&
-            !isPngImageUrl(verifiedExplicit.url) &&
-            selectMainThumbnailImage([verifiedExplicit.url])
-          ) {
-            primaryImg = verifiedExplicit.url;
-          } else if (verifiedExplicit.warning) {
-            resolved.warnings.push(verifiedExplicit.warning);
-          }
+          break;
+        }
+
+        const verifiedExplicit = await verifyAndPreserveArticleImageUrl(candidate, {
+          baseUrl: safeBaseUrl,
+          callerToken: token,
+          fallbackHostBlogId: blogId,
+        });
+        if (verifiedExplicit.url && selectMainThumbnailImage([verifiedExplicit.url])) {
+          primaryImg = verifiedExplicit.url;
+          break;
+        } else if (verifiedExplicit.warning) {
+          resolved.warnings.push(verifiedExplicit.warning);
         }
       }
 
@@ -252,8 +281,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Step 3: Validate image presence
-    if (!imageUrl || typeof imageUrl !== 'string' || imageUrl.trim().length === 0) {
+    // Step 3: Validate caption & resolve primary + fallback image candidates
+    const primaryRawImage = typeof imageUrl === 'string' ? imageUrl.trim() : '';
+    const fallbackRawThumb = typeof thumbnailUrl === 'string' ? thumbnailUrl.trim() : '';
+    const candidateInputs = [primaryRawImage, fallbackRawThumb].filter(
+      (val, idx, arr) => Boolean(val) && arr.indexOf(val) === idx
+    );
+
+    if (candidateInputs.length === 0) {
       return NextResponse.json(
         { error: 'Please select or upload a main image for the post.' },
         { status: 400 }
@@ -268,62 +303,73 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Step 5: Ensure Main Image is uploaded to dedicated Blogger host if supplied as raw base64 data
-    let verifiedMainImageUrl = imageUrl.trim();
+    // Step 5 & Verification Loop: Validate syntax, host data URIs on Blogger CDN, and verify public HTTPS + image MIME
+    let verifiedMainImageUrl = '';
+    let lastFailureError = '';
 
-    if (verifiedMainImageUrl.startsWith('data:image/')) {
-      const hostUpload = await uploadAndVerifyImageOnBloggerHost({
-        imageBase64OrDataUrl: verifiedMainImageUrl,
-        fileName: 'main-post-image.jpg',
-        callerBearerToken: token,
+    for (const rawCandidate of candidateInputs) {
+      const syntaxCheck = validateImageUrlSyntax(rawCandidate, {
+        allowDataUri: true,
+        allowHttpUpgrade: true,
       });
 
-      if (!hostUpload.success || !hostUpload.verified || !hostUpload.imageUrl) {
-        return NextResponse.json(
-          {
-            success: false,
-            verified: false,
-            error: `Publishing blocked: Failed to host and verify Main Image on Blogger image host: ${
-              hostUpload.error || 'Upload failed'
-            }`,
-          },
-          { status: 400 }
-        );
+      if (!syntaxCheck.valid || !syntaxCheck.normalizedUrl) {
+        lastFailureError = syntaxCheck.reason || 'Invalid main image URL.';
+        continue;
       }
-      verifiedMainImageUrl = hostUpload.imageUrl;
+
+      let candidateUrl = syntaxCheck.normalizedUrl;
+
+      if (candidateUrl.startsWith('data:image/')) {
+        const { mimeType, ext } = inferMimeAndExtFromDataUrl(candidateUrl);
+        const hostUpload = await uploadAndVerifyImageOnBloggerHost({
+          imageBase64OrDataUrl: candidateUrl,
+          mimeType,
+          fileName: `main-post-image.${ext}`,
+          callerBearerToken: token,
+          fallbackHostBlogId: blogId,
+        });
+
+        if (!hostUpload.success || !hostUpload.verified || !hostUpload.imageUrl) {
+          lastFailureError = `Failed to host and verify Main Image on Blogger image host: ${
+            hostUpload.error || 'Upload failed'
+          }`;
+          continue;
+        }
+        candidateUrl = hostUpload.imageUrl;
+      }
+
+      const verification = await verifyImage(candidateUrl, { allowSvg: false });
+      if (verification.isValid && verification.verifiedUrl) {
+        verifiedMainImageUrl = verification.verifiedUrl;
+        break;
+      }
+
+      lastFailureError =
+        verification.error || 'The image URL is not publicly accessible or has an invalid MIME type.';
     }
 
-    // ========================================================================
-    // MANDATORY SERVER-SIDE VERIFICATION LOOP:
-    // Re-verify Main Post Image ({{IMAGE_URL}}) using 'verifyImage' to ensure it
-    // remains publicly accessible. Main Post Image is always used as the Blogger
-    // post thumbnail and placed as the first image in the published post HTML.
-    // ========================================================================
-    const verification = await verifyImage(verifiedMainImageUrl);
-
-    if (!verification.isValid || !verification.verifiedUrl) {
+    if (!verifiedMainImageUrl) {
       return NextResponse.json(
         {
           success: false,
           verified: false,
           failedImage: 'Main Post Image',
-          failedUrl: verifiedMainImageUrl,
+          failedUrl: candidateInputs[0],
           error: `Publishing blocked: Server-side verification loop failed for Main Post Image. ${
-            verification.error || 'The image URL is not publicly accessible.'
+            lastFailureError || 'The image URL is not publicly accessible.'
           } Never publish a post containing broken, unverified, or private image URLs.`,
         },
         { status: 400 }
       );
     }
 
-    verifiedMainImageUrl = verification.verifiedUrl;
-
     // Determine final title
     const finalTitle = (title && typeof title === 'string' && title.trim().length > 0)
       ? title.trim()
       : generateTitleFromCaption(caption);
 
-    // Step 6: Render /templates/blogger-post-template.html using Main Post Image ({{IMAGE_URL}}) as thumbnail
+    // Step 6: Render /templates/blogger-post-template.html using Main Post Image ({{IMAGE_URL}} & {{THUMBNAIL_URL}})
     const postHtml = renderTemplate(effectiveTemplateInput, {
       title: finalTitle,
       imageUrl: verifiedMainImageUrl,

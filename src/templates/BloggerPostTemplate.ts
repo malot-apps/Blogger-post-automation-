@@ -1,6 +1,6 @@
 import { escapeHtml } from '../lib/sanitizer';
 import {
-  isPngImageUrl,
+  isDisallowedNonThumbnailFormat,
   selectMainThumbnailImageFromHtml,
 } from '../lib/mainImageSelector';
 import {
@@ -1104,16 +1104,40 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
       return typeof val === 'string' && /^\{\{[A-Z0-9_]+\}\}$/.test(val.trim());
     }
 
-    function isJpgOnlyAsset(url) {
+    function isUnwantedInlineAsset(url) {
+      if (typeof url !== 'string') return true;
+      const clean = url.split('#')[0].split('?')[0].trim().toLowerCase();
+      if (!clean) return true;
+      if (/\.(svg|bmp|ico)(\?|#|$)/i.test(url)) return true;
+      if (/(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adsterra\.com|effectivecpmnetwork\.com|highperformanceformat\.com|flaticon\.com|icons8\.com|iconfinder\.com)/i.test(url)) {
+        return true;
+      }
+      if (/(^|[\/_\-.])(ad[-_]?banner|adsense|ad[-_]?slot|promo[-_]?banner|play[-_]?(btn|button|icon|overlay)|119514|favicon|site[-_]?logo|spacer|blank|pixel|1x1|728x90|300x250|468x60|160x600|320x50)([\/_\-.]|$)/i.test(clean)) {
+        return true;
+      }
+      if (/\/(?:logo|favicon|play|play-button|play-icon|arrow|share|spinner|loader|spacer|blank|pixel|ad|ads)\.(?:png|gif|svg|ico|webp)$/i.test(clean)) {
+        return true;
+      }
+      return false;
+    }
+
+    function isSupportedImageAsset(url) {
       if (typeof url !== 'string') return false;
       const trimmed = url.trim();
       if (!trimmed || isUnresolvedPlaceholder(trimmed)) return false;
-      if (/^data:image\/(jpe?g|webp|avif)/i.test(trimmed)) return true;
+      if (/^(?:file|content|javascript|vbscript):/i.test(trimmed)) return false;
+      if (/^data:image\/gif;base64,R0lGOD/i.test(trimmed)) return false;
+      if (/^data:image\/(jpe?g|png|webp|avif)/i.test(trimmed)) return true;
       if (/^data:image\//i.test(trimmed)) return false;
-      if (/\.(png|gif|svg|bmp|ico)(\?|#|$)/i.test(trimmed)) return false;
-      if (/[?&](?:format|fm|ext)=png(?:&|$)/i.test(trimmed)) return false;
-      if (/\.(jpe?g|webp|avif)(\?|#|$)/i.test(trimmed)) return true;
+      if (isUnwantedInlineAsset(trimmed)) return false;
+      if (/\.(jpe?g|png|webp|avif)(\?|#|$)/i.test(trimmed)) return true;
+      if (/[?&](?:format|fm|ext)=(?:jpe?g|png|webp|avif)(?:&|$)/i.test(trimmed)) return true;
+      if (/\.gif(\?|#|$)/i.test(trimmed)) return false;
       return /^(?:https?:)?\/\/|^(?:blob:|\/|\.\/|\.\.\/)/i.test(trimmed);
+    }
+
+    function isJpgOnlyAsset(url) {
+      return isSupportedImageAsset(url);
     }
 
     function getImageCandidateSrc(img) {
@@ -1155,20 +1179,20 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
     }
 
     function enforceJpgOnlyImages() {
-      let resolvedJpgUrl = isJpgOnlyAsset(CUSTOM_THUMBNAIL_URL) ? CUSTOM_THUMBNAIL_URL.trim() : '';
+      let resolvedThumbUrl = isSupportedImageAsset(CUSTOM_THUMBNAIL_URL) ? CUSTOM_THUMBNAIL_URL.trim() : '';
       let separatorFallbackUrl = '';
 
-      // Automatically exclude any PNG or ad/non-content images inside Blogger post separators
+      // Preserve genuine JPG, JPEG, PNG, and WebP images while excluding ad/icon assets inside Blogger post separators
       document.querySelectorAll('.separator img').forEach(function (img) {
         const src = getImageCandidateSrc(img);
         if (!src || isUnresolvedPlaceholder(src)) return;
-        if (isJpgOnlyAsset(src)) {
+        if (isSupportedImageAsset(src)) {
           if (img.getAttribute('src') !== src) {
             img.setAttribute('src', src);
           }
-          if (!resolvedJpgUrl) {
-            resolvedJpgUrl = src;
-          } else if (!separatorFallbackUrl && src !== resolvedJpgUrl) {
+          if (!resolvedThumbUrl) {
+            resolvedThumbUrl = src;
+          } else if (!separatorFallbackUrl && src !== resolvedThumbUrl) {
             separatorFallbackUrl = src;
           }
         } else {
@@ -1184,11 +1208,11 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
 
       if (videoThumbnail) {
         const directThumbSrc = getImageCandidateSrc(videoThumbnail);
-        if (!resolvedJpgUrl && isJpgOnlyAsset(directThumbSrc)) {
-          resolvedJpgUrl = directThumbSrc;
+        if (!resolvedThumbUrl && isSupportedImageAsset(directThumbSrc)) {
+          resolvedThumbUrl = directThumbSrc;
         }
 
-        if (separatorFallbackUrl && separatorFallbackUrl !== resolvedJpgUrl) {
+        if (separatorFallbackUrl && separatorFallbackUrl !== resolvedThumbUrl) {
           videoThumbnail.dataset.fallbackUrl = separatorFallbackUrl;
         }
 
@@ -1204,14 +1228,14 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
           videoThumbnail.addEventListener('error', handleThumbnailError);
         }
 
-        if (resolvedJpgUrl) {
+        if (resolvedThumbUrl) {
           if (videoThumbnail.getAttribute('loading') === 'lazy') {
             videoThumbnail.setAttribute('loading', 'eager');
           }
-          if (videoThumbnail.getAttribute('src') !== resolvedJpgUrl) {
-            videoThumbnail.src = resolvedJpgUrl;
+          if (videoThumbnail.getAttribute('src') !== resolvedThumbUrl) {
+            videoThumbnail.src = resolvedThumbUrl;
           }
-          if (videoPlayer) videoPlayer.setAttribute('poster', resolvedJpgUrl);
+          if (videoPlayer) videoPlayer.setAttribute('poster', resolvedThumbUrl);
           if (videoThumbnail.complete) {
             if (videoThumbnail.naturalWidth > 0) {
               adjustAspectRatio();
@@ -1588,15 +1612,17 @@ export function ensureMainImageFirstInPostHtml(
   let cleanUrl = sanitizeTemplateUrlValue(mainImageUrl);
 
   // Never scan the Master Template shell as a fallback; only inspect .imported-article-content if present
-  if (!cleanUrl || isPngImageUrl(cleanUrl)) {
+  if (!cleanUrl || isDisallowedNonThumbnailFormat(cleanUrl)) {
     const articleSlice = extractImportedArticleSlice(html);
     const htmlCandidate = articleSlice ? selectMainThumbnailImageFromHtml(articleSlice) : null;
-    if (htmlCandidate && !isPngImageUrl(htmlCandidate)) {
+    if (htmlCandidate && !isDisallowedNonThumbnailFormat(htmlCandidate)) {
       cleanUrl = sanitizeTemplateUrlValue(htmlCandidate);
+    } else {
+      cleanUrl = '';
     }
   }
 
-  if (!cleanUrl || isPngImageUrl(cleanUrl)) return html;
+  if (!cleanUrl || isDisallowedNonThumbnailFormat(cleanUrl)) return html;
 
   const comparableTarget = normalizeComparableUrl(cleanUrl);
   const bodyMatch = /<body\b[^>]*>/i.exec(html);
@@ -1716,7 +1742,13 @@ export function renderBloggerPostTemplate(
   const escapedTitle = escapeHtml(data.title || '');
   const formattedCaption = escapeHtml(data.caption || '').replace(/\n/g, '<br/>');
   const rawMainUrl = sanitizeTemplateUrlValue(data.imageUrl || data.thumbnailUrl);
-  const safeImageUrl = rawMainUrl && !isPngImageUrl(rawMainUrl) ? rawMainUrl : '';
+  const rawThumbFallback = sanitizeTemplateUrlValue(data.thumbnailUrl);
+  const safeImageUrl =
+    rawMainUrl && !isDisallowedNonThumbnailFormat(rawMainUrl)
+      ? rawMainUrl
+      : rawThumbFallback && !isDisallowedNonThumbnailFormat(rawThumbFallback)
+        ? rawThumbFallback
+        : '';
 
   const formattedDate =
     data.publishedDate ||
@@ -1869,11 +1901,18 @@ export function renderImportedPostTemplate(
     plainSummary.length > 110 ? `${plainSummary.slice(0, 107).trim()}...` : plainSummary || data.title || ''
   );
 
-  let safeImageUrl = sanitizeTemplateUrlValue(data.imageUrl || data.thumbnailUrl);
-  if (!safeImageUrl || isPngImageUrl(safeImageUrl)) {
+  const rawMainInput = sanitizeTemplateUrlValue(data.imageUrl);
+  const rawThumbInput = sanitizeTemplateUrlValue(data.thumbnailUrl);
+  let safeImageUrl =
+    rawMainInput && !isDisallowedNonThumbnailFormat(rawMainInput)
+      ? rawMainInput
+      : rawThumbInput && !isDisallowedNonThumbnailFormat(rawThumbInput)
+        ? rawThumbInput
+        : '';
+  if (!safeImageUrl) {
     const recoveredFromArticle = selectMainThumbnailImageFromHtml(cleanedArticleHtml);
     safeImageUrl =
-      recoveredFromArticle && !isPngImageUrl(recoveredFromArticle)
+      recoveredFromArticle && !isDisallowedNonThumbnailFormat(recoveredFromArticle)
         ? sanitizeTemplateUrlValue(recoveredFromArticle)
         : '';
   }

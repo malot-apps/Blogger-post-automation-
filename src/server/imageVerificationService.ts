@@ -21,6 +21,8 @@ const dnsLookup = promisify(dns.lookup);
  * ============================================================================
  */
 
+import { isSupportedImageMimeType, normalizeImageMimeType } from '../lib/mainImageSelector';
+
 export interface ImageVerificationResult {
   isValid: boolean;
   verifiedUrl?: string;
@@ -29,9 +31,10 @@ export interface ImageVerificationResult {
   error?: string;
 }
 
-// Allowed public image MIME types
+// Allowed public image MIME types (supports JPG/JPEG, PNG, WebP, GIF, AVIF)
 const ALLOWED_IMAGE_MIME_TYPES = [
   'image/jpeg',
+  'image/jpg',
   'image/png',
   'image/webp',
   'image/gif',
@@ -150,7 +153,7 @@ export async function validateUrlForSsrf(urlString: string): Promise<{ safe: boo
 
 /**
  * Performs comprehensive server-side verification of an image URL.
- * 
+ *
  * Verifies that:
  * 1. The URL exists and is well-formed.
  * 2. The URL strictly uses HTTPS.
@@ -161,18 +164,26 @@ export async function validateUrlForSsrf(urlString: string): Promise<{ safe: boo
  */
 export async function verifyPublicImageUrl(
   urlString: string,
-  options: { timeoutMs?: number; maxRedirects?: number } = {}
+  options: { timeoutMs?: number; maxRedirects?: number; allowSvg?: boolean } = {}
 ): Promise<ImageVerificationResult> {
-  const { timeoutMs = 8000, maxRedirects = 3 } = options;
+  const { timeoutMs = 8000, maxRedirects = 3, allowSvg = false } = options;
 
   if (!urlString || typeof urlString !== 'string' || urlString.trim().length === 0) {
     return { isValid: false, error: 'Empty or undefined image URL.' };
   }
 
-  const trimmed = urlString.trim();
+  let trimmed = urlString.trim();
+  if (trimmed.startsWith('//')) {
+    trimmed = `https:${trimmed}`;
+  }
 
-  // Explicitly reject data: or blob: URLs
-  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:') || trimmed.startsWith('file:')) {
+  // Explicitly reject data:, blob:, file:, or content: URLs
+  if (
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('file:') ||
+    trimmed.startsWith('content:')
+  ) {
     return {
       isValid: false,
       error: 'Unverified local/data URI. Image must be hosted on a public HTTPS server (Blogger image host).',
@@ -201,7 +212,7 @@ export async function verifyPublicImageUrl(
           signal: controller.signal,
           headers: {
             'User-Agent': 'BloggerPublisher-ImageVerifier/1.0',
-            Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            Accept: 'image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8',
           },
         });
 
@@ -214,7 +225,7 @@ export async function verifyPublicImageUrl(
             headers: {
               'User-Agent': 'BloggerPublisher-ImageVerifier/1.0',
               Range: 'bytes=0-1024',
-              Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+              Accept: 'image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8',
             },
           });
         }
@@ -227,7 +238,7 @@ export async function verifyPublicImageUrl(
           headers: {
             'User-Agent': 'BloggerPublisher-ImageVerifier/1.0',
             Range: 'bytes=0-1024',
-            Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            Accept: 'image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8',
           },
         });
       }
@@ -255,17 +266,28 @@ export async function verifyPublicImageUrl(
 
       // Check Content-Type header
       const rawContentType = response.headers.get('content-type') || '';
-      const mimeType = rawContentType.split(';')[0].trim().toLowerCase();
+      const rawBaseMime = rawContentType.split(';')[0].trim().toLowerCase();
+      const mimeType = normalizeImageMimeType(rawBaseMime);
+
+      if (!allowSvg && rawBaseMime === 'image/svg+xml') {
+        return {
+          isValid: false,
+          contentType: rawBaseMime,
+          error: "SVG images ('image/svg+xml') cannot be used as Blogger post thumbnails. Use JPG, JPEG, PNG, or WebP.",
+        };
+      }
 
       const isImageMime =
-        mimeType.startsWith('image/') ||
-        ALLOWED_IMAGE_MIME_TYPES.includes(mimeType) ||
-        mimeType === 'application/octet-stream'; // Some CDN endpoints misreport binary images
+        isSupportedImageMimeType(mimeType) ||
+        (allowSvg && rawBaseMime === 'image/svg+xml') ||
+        (rawBaseMime.startsWith('image/') && rawBaseMime !== 'image/svg+xml') ||
+        ALLOWED_IMAGE_MIME_TYPES.includes(rawBaseMime) ||
+        rawBaseMime === 'application/octet-stream'; // Some CDN endpoints misreport binary images
 
       if (!isImageMime) {
         return {
           isValid: false,
-          contentType: mimeType,
+          contentType: mimeType || rawBaseMime,
           error: `Invalid Content-Type '${rawContentType}'. Expected an image MIME type (image/jpeg, image/png, image/webp, etc.).`,
         };
       }
@@ -283,7 +305,7 @@ export async function verifyPublicImageUrl(
       return {
         isValid: true,
         verifiedUrl: currentUrl,
-        contentType: mimeType,
+        contentType: mimeType || rawBaseMime,
         contentLength,
       };
     } catch (err: unknown) {
