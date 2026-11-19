@@ -533,7 +533,7 @@ export function stripSchemaOrgJsonLdFromText(text: string): string {
  */
 export function neutralizeTemplatePlaceholders(html: string): string {
   if (!html) return '';
-  return html.replace(/\{\{\s*(TITLE|IMAGE_URL|THUMBNAIL_URL|CAPTION|PUBLISHED_DATE)\s*\}\}/gi, '');
+  return html.replace(/\{\{\s*(TITLE|IMAGE_URL|THUMBNAIL_URL|CAPTION|PUBLISHED_DATE|META_DESCRIPTION)\s*\}\}/gi, '');
 }
 
 function cleanImgAttrsString(

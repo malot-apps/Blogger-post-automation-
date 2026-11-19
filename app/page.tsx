@@ -66,6 +66,7 @@ export default function Home() {
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [caption, setCaption] = useState('');
   const [title, setTitle] = useState('');
+  const [metaDescription, setMetaDescription] = useState('');
   const [labels, setLabels] = useState('');
 
   // Template & Settings state
@@ -81,11 +82,21 @@ export default function Home() {
           }
           return DEFAULT_MASTER_TEMPLATE;
         }
-        const migrated = deduplicateAdScriptsAndContainers(
+        let migrated = deduplicateAdScriptsAndContainers(
           saved
             .replace(/id="videoThumbnail" src="\{\{THUMBNAIL_URL\}\}"/g, 'id="videoThumbnail" src="{{IMAGE_URL}}"')
             .replace(/CUSTOM_THUMBNAIL_URL = "\{\{THUMBNAIL_URL\}\}";/g, 'CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";')
         );
+        if (
+          migrated.includes('<title>{{TITLE}}</title>') &&
+          !migrated.includes('{{META_DESCRIPTION}}') &&
+          migrated.includes('bn-player-heading')
+        ) {
+          migrated = migrated.replace(
+            /<title>\{\{TITLE\}\}<\/title>/i,
+            '<title>{{TITLE}}</title>\n  <meta name="description" content="{{META_DESCRIPTION}}" />'
+          );
+        }
         if (migrated !== saved) {
           try {
             localStorage.setItem(STORAGE_KEY_TEMPLATE, migrated);
@@ -297,6 +308,7 @@ export default function Home() {
     setMainImageUrlOverride(null);
     setCaption('');
     setTitle('');
+    setMetaDescription('');
     setLabels('');
   };
 
@@ -398,6 +410,7 @@ export default function Home() {
           thumbnailUrl: activeMainImageSrc,
           caption: caption.trim(),
           title: title.trim() || undefined,
+          metaDescription: metaDescription.trim() || undefined,
           labels: labels.trim() || undefined,
           customTemplate,
           adsSettings,
@@ -457,6 +470,7 @@ export default function Home() {
     setMainImageUrlOverride(null);
     setCaption('');
     setTitle('');
+    setMetaDescription('');
     setLabels('');
     setPublishedPost(null);
   };
@@ -620,6 +634,8 @@ export default function Home() {
               setCaption={setCaption}
               title={title}
               setTitle={setTitle}
+              metaDescription={metaDescription}
+              setMetaDescription={setMetaDescription}
               labels={labels}
               setLabels={setLabels}
               onPreview={() => setIsPreviewOpen(true)}
@@ -664,6 +680,7 @@ export default function Home() {
         imageUrl={activeMainImageSrc || ''}
         thumbnailUrl={activeMainImageSrc || ''}
         caption={caption}
+        metaDescription={metaDescription}
         labels={labels}
         templateString={customTemplate}
         adsSettings={adsSettings}
@@ -729,6 +746,7 @@ export default function Home() {
         onApplyTitle={setTitle}
         onApplyCaption={setCaption}
         onApplyLabels={setLabels}
+        onApplyMetaDescription={setMetaDescription}
       />
     </div>
   );

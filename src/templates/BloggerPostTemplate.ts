@@ -15,6 +15,7 @@ export interface BloggerTemplateVariables {
   imageUrl: string;
   thumbnailUrl?: string;
   caption: string;
+  metaDescription?: string;
   publishedDate?: string;
 }
 
@@ -29,6 +30,7 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{TITLE}}</title>
+  <meta name="description" content="{{META_DESCRIPTION}}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -185,6 +187,7 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
     .video-container {
       position: relative;
       width: 100%;
+      max-width: min(100%, var(--video-width, 100%), calc(max(320px, 82vh) * var(--video-aspect, 1.777778)));
       aspect-ratio: var(--video-ratio, 16 / 9);
       height: auto;
       margin: 12px auto 18px;
@@ -197,26 +200,16 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
       -webkit-tap-highlight-color: transparent;
     }
 
-    .video-container.is-portrait {
-      max-width: min(100%, 420px);
-    }
-
-    .video-container.is-square {
-      max-width: min(100%, 560px);
-    }
-
     #videoThumbnail {
       width: 100%;
       height: 100%;
       object-fit: contain;
+      object-position: center;
       display: block;
-      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+      transition: opacity 0.25s ease;
     }
 
-    .video-container:hover #videoThumbnail {
-      transform: scale(1.025);
-    }
-
+    .video-container.is-thumb-error #videoThumbnail,
     .video-container.is-playing #videoThumbnail,
     .video-container.is-playing .video-scrim,
     .video-container.is-playing .play-center-group {
@@ -236,6 +229,7 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
       inset: 0;
       width: 100%;
       height: 100%;
+      object-fit: contain;
       display: none;
       background: #000;
       z-index: 20;
@@ -304,15 +298,11 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
     /* Centered Play Button + Bengali Instruction Group */
     .play-center-group {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -46%);
+      inset: 0;
       display: flex;
-      flex-direction: column;
       align-items: center;
-      gap: 14px;
+      justify-content: center;
       z-index: 10;
-      width: min(90%, 340px);
       pointer-events: none;
     }
 
@@ -386,6 +376,13 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
 
     /* Short Bengali instruction directly below Play button */
     .bn-play-hint {
+      position: absolute;
+      top: calc(50% + 52px);
+      left: 12px;
+      right: 12px;
+      margin-inline: auto;
+      width: fit-content;
+      max-width: min(90%, 340px);
       padding: 6px 14px;
       border-radius: 999px;
       background: rgba(15, 23, 42, 0.72);
@@ -692,6 +689,7 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
       }
 
       .bn-play-hint {
+        top: calc(50% + 42px);
         font-size: 12px;
         padding: 5px 12px;
       }
@@ -790,7 +788,7 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
       <span>জন দেখছেন</span>
     </div>
 
-    <img alt="{{TITLE}}" id="videoThumbnail" src="{{IMAGE_URL}}" />
+    <img alt="{{TITLE}}" decoding="async" id="videoThumbnail" loading="eager" src="{{IMAGE_URL}}" />
     <div class="video-scrim" aria-hidden="true"></div>
 
     <video id="videoPlayer" playsinline controls preload="none" poster="{{IMAGE_URL}}"></video>
@@ -1029,15 +1027,20 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
     let playbackFailures = 0;
     let loadTimeoutId = null;
 
-    // Auto Thumbnail Aspect Ratio (9:16, 16:9, 1:1 without cropping or stretching)
+    // Auto Thumbnail Aspect Ratio (16:9, 9:16, 1:1, 4:3, 2:3 & custom ratios without cropping or stretching)
     function adjustAspectRatio() {
       if (!videoThumbnail || !videoContainer) return;
       const w = videoThumbnail.naturalWidth;
       const h = videoThumbnail.naturalHeight;
       if (w > 0 && h > 0) {
         videoContainer.style.setProperty('--video-ratio', w + ' / ' + h);
+        videoContainer.style.setProperty('--video-width', w + 'px');
+        videoContainer.style.setProperty('--video-aspect', String(w / h));
         videoContainer.classList.toggle('is-portrait', h > w);
+        videoContainer.classList.toggle('is-landscape', w > h);
         videoContainer.classList.toggle('is-square', w === h);
+        videoContainer.classList.remove('is-thumb-error');
+        videoThumbnail.style.display = 'block';
       }
     }
 
@@ -1097,27 +1100,77 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
       }
     }
 
+    function isUnresolvedPlaceholder(val) {
+      return typeof val === 'string' && /^\{\{[A-Z0-9_]+\}\}$/.test(val.trim());
+    }
+
     function isJpgOnlyAsset(url) {
       if (typeof url !== 'string') return false;
       const trimmed = url.trim();
-      if (!trimmed || trimmed === '{{IMAGE_URL}}') return false;
-      if (/^data:image\/jpeg/i.test(trimmed)) return true;
+      if (!trimmed || isUnresolvedPlaceholder(trimmed)) return false;
+      if (/^data:image\/(jpe?g|webp|avif)/i.test(trimmed)) return true;
       if (/^data:image\//i.test(trimmed)) return false;
       if (/\.(png|gif|svg|bmp|ico)(\?|#|$)/i.test(trimmed)) return false;
       if (/[?&](?:format|fm|ext)=png(?:&|$)/i.test(trimmed)) return false;
       if (/\.(jpe?g|webp|avif)(\?|#|$)/i.test(trimmed)) return true;
-      return /^https?:\/\//i.test(trimmed);
+      return /^(?:https?:)?\/\/|^(?:blob:|\/|\.\/|\.\.\/)/i.test(trimmed);
+    }
+
+    function getImageCandidateSrc(img) {
+      if (!img) return '';
+      const rawSrc = (img.getAttribute('src') || '').trim();
+      const isPlaceholderSrc =
+        !rawSrc ||
+        isUnresolvedPlaceholder(rawSrc) ||
+        /^data:image\/gif;base64,R0lGOD/i.test(rawSrc);
+      if (!isPlaceholderSrc) {
+        return rawSrc;
+      }
+      const lazyAttrs = ['data-src', 'data-original', 'data-lazy-src', 'data-lazyload'];
+      for (let i = 0; i < lazyAttrs.length; i += 1) {
+        const val = (img.getAttribute(lazyAttrs[i]) || '').trim();
+        if (val && !isUnresolvedPlaceholder(val)) {
+          return val;
+        }
+      }
+      return '';
+    }
+
+    function handleThumbnailError() {
+      if (!videoThumbnail) return;
+      const fallbackSrc = videoThumbnail.dataset.fallbackUrl || '';
+      if (fallbackSrc && !videoThumbnail.dataset.fallbackTried) {
+        videoThumbnail.dataset.fallbackTried = 'true';
+        videoThumbnail.src = fallbackSrc;
+        if (videoPlayer) videoPlayer.setAttribute('poster', fallbackSrc);
+        return;
+      }
+      videoThumbnail.style.display = 'none';
+      if (videoContainer) {
+        videoContainer.classList.add('is-thumb-error');
+      }
+      if (videoPlayer) {
+        videoPlayer.removeAttribute('poster');
+      }
     }
 
     function enforceJpgOnlyImages() {
       let resolvedJpgUrl = isJpgOnlyAsset(CUSTOM_THUMBNAIL_URL) ? CUSTOM_THUMBNAIL_URL.trim() : '';
+      let separatorFallbackUrl = '';
 
       // Automatically exclude any PNG or ad/non-content images inside Blogger post separators
       document.querySelectorAll('.separator img').forEach(function (img) {
-        const src = img.getAttribute('src') || '';
-        if (src === '{{IMAGE_URL}}') return;
+        const src = getImageCandidateSrc(img);
+        if (!src || isUnresolvedPlaceholder(src)) return;
         if (isJpgOnlyAsset(src)) {
-          if (!resolvedJpgUrl) resolvedJpgUrl = src.trim();
+          if (img.getAttribute('src') !== src) {
+            img.setAttribute('src', src);
+          }
+          if (!resolvedJpgUrl) {
+            resolvedJpgUrl = src;
+          } else if (!separatorFallbackUrl && src !== resolvedJpgUrl) {
+            separatorFallbackUrl = src;
+          }
         } else {
           const parentAnchor = img.closest('a');
           if (parentAnchor) {
@@ -1130,15 +1183,45 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
       });
 
       if (videoThumbnail) {
+        const directThumbSrc = getImageCandidateSrc(videoThumbnail);
+        if (!resolvedJpgUrl && isJpgOnlyAsset(directThumbSrc)) {
+          resolvedJpgUrl = directThumbSrc;
+        }
+
+        if (separatorFallbackUrl && separatorFallbackUrl !== resolvedJpgUrl) {
+          videoThumbnail.dataset.fallbackUrl = separatorFallbackUrl;
+        }
+
+        if (!videoThumbnail.dataset.sizingListenersAttached) {
+          videoThumbnail.dataset.sizingListenersAttached = 'true';
+          videoThumbnail.addEventListener('load', function () {
+            if (typeof videoThumbnail.decode === 'function') {
+              videoThumbnail.decode().catch(function () {}).finally(adjustAspectRatio);
+            } else {
+              adjustAspectRatio();
+            }
+          });
+          videoThumbnail.addEventListener('error', handleThumbnailError);
+        }
+
         if (resolvedJpgUrl) {
-          videoThumbnail.addEventListener('load', adjustAspectRatio);
-          videoThumbnail.src = resolvedJpgUrl;
-          if (videoPlayer) videoPlayer.setAttribute('poster', resolvedJpgUrl);
-          if (videoThumbnail.complete && videoThumbnail.naturalWidth > 0) {
-            adjustAspectRatio();
+          if (videoThumbnail.getAttribute('loading') === 'lazy') {
+            videoThumbnail.setAttribute('loading', 'eager');
           }
-        } else if (CUSTOM_THUMBNAIL_URL && CUSTOM_THUMBNAIL_URL !== '{{IMAGE_URL}}') {
+          if (videoThumbnail.getAttribute('src') !== resolvedJpgUrl) {
+            videoThumbnail.src = resolvedJpgUrl;
+          }
+          if (videoPlayer) videoPlayer.setAttribute('poster', resolvedJpgUrl);
+          if (videoThumbnail.complete) {
+            if (videoThumbnail.naturalWidth > 0) {
+              adjustAspectRatio();
+            } else {
+              handleThumbnailError();
+            }
+          }
+        } else if (CUSTOM_THUMBNAIL_URL && !isUnresolvedPlaceholder(CUSTOM_THUMBNAIL_URL)) {
           videoThumbnail.style.display = 'none';
+          if (videoContainer) videoContainer.classList.add('is-thumb-error');
           if (videoPlayer) videoPlayer.removeAttribute('poster');
         }
       }
@@ -1547,9 +1630,67 @@ export function ensureMainImageFirstInPostHtml(
   return `${heroBlock}\n${html}`;
 }
 
+export function normalizeMetaDescription(raw?: string | null): string {
+  if (!raw) return '';
+  return raw
+    .replace(/\{\{\s*(TITLE|IMAGE_URL|THUMBNAIL_URL|CAPTION|PUBLISHED_DATE|META_DESCRIPTION)\s*\}\}/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Injects or replaces the <meta name="description"> tag cleanly in Blogger post HTML.
+ * - Replaces {{META_DESCRIPTION}} when present.
+ * - If metaDescription is empty/blank, removes the empty placeholder tag cleanly.
+ * - If a custom/cached template lacks {{META_DESCRIPTION}} and a non-empty description is provided,
+ *   updates an existing <meta name="description"> or injects one inside <head>.
+ */
+export function applyMetaDescriptionToTemplate(
+  html: string,
+  metaDescription?: string | null
+): string {
+  const normalized = normalizeMetaDescription(metaDescription);
+  const emptyPlaceholderMetaLineRx =
+    /[ \t]*<meta\b(?=[^>]*\bname\s*=\s*["']description["'])(?=[^>]*\bcontent\s*=\s*["']\s*\{\{META_DESCRIPTION\}\}\s*["'])[^>]*\/?>[ \t]*\r?\n?/gi;
+
+  if (!normalized) {
+    return html
+      .replace(emptyPlaceholderMetaLineRx, '')
+      .replace(/\{\{META_DESCRIPTION\}\}/g, '');
+  }
+
+  const escapedMeta = escapeHtml(normalized);
+  if (/\{\{META_DESCRIPTION\}\}/.test(html)) {
+    return html.replace(/\{\{META_DESCRIPTION\}\}/g, () => escapedMeta);
+  }
+
+  const existingMetaDescRx = /<meta\b([^>]*\bname\s*=\s*["']description["'][^>]*)>/i;
+  if (existingMetaDescRx.test(html)) {
+    return html.replace(existingMetaDescRx, (full, attrs: string) => {
+      if (/\bcontent\s*=/i.test(attrs)) {
+        return full.replace(
+          /\bcontent\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i,
+          () => `content="${escapedMeta}"`
+        );
+      }
+      return `<meta${attrs} content="${escapedMeta}" />`;
+    });
+  }
+
+  const metaTag = `<meta name="description" content="${escapedMeta}" />`;
+  if (/<\/title>/i.test(html)) {
+    return html.replace(/<\/title>/i, (m) => `${m}\n  ${metaTag}`);
+  }
+  if (/<head\b[^>]*>/i.test(html)) {
+    return html.replace(/<head\b[^>]*>/i, (m) => `${m}\n  ${metaTag}`);
+  }
+  return `${metaTag}\n${html}`;
+}
+
 /**
  * Renders the Blogger post HTML by replacing all dynamic template variables:
  * - {{TITLE}}
+ * - {{META_DESCRIPTION}}
  * - {{IMAGE_URL}} / {{THUMBNAIL_URL}} (always uses the selected Main Post Image)
  * - {{CAPTION}}
  * - {{PUBLISHED_DATE}}
@@ -1566,9 +1707,10 @@ export function renderBloggerPostTemplate(
       : DEFAULT_MASTER_TEMPLATE;
 
   if (!data) {
+    const cleaned = applyMetaDescriptionToTemplate(safeTemplate, undefined);
     return adsSettings
-      ? ensureMasterAdConfiguration(safeTemplate, DEFAULT_MASTER_TEMPLATE, adsSettings)
-      : safeTemplate;
+      ? ensureMasterAdConfiguration(cleaned, DEFAULT_MASTER_TEMPLATE, adsSettings)
+      : cleaned;
   }
 
   const escapedTitle = escapeHtml(data.title || '');
@@ -1583,13 +1725,14 @@ export function renderBloggerPostTemplate(
       timeStyle: 'short',
     });
 
-  const rendered = safeTemplate
+  const renderedWithVars = safeTemplate
     .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
     .replace(/\{\{IMAGE_URL\}\}/g, () => safeImageUrl)
     .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeImageUrl)
     .replace(/\{\{CAPTION\}\}/g, () => formattedCaption)
     .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
 
+  const rendered = applyMetaDescriptionToTemplate(renderedWithVars, data.metaDescription);
   const secured = ensureMasterAdConfiguration(rendered, DEFAULT_MASTER_TEMPLATE, adsSettings);
   return ensureMainImageFirstInPostHtml(secured, safeImageUrl, data.title);
 }
@@ -1601,6 +1744,7 @@ export interface ImportedTemplateVariables {
   thumbnailUrl?: string;
   firstImageAlt?: string;
   firstImageSrcset?: string;
+  metaDescription?: string;
   publishedDate?: string;
   sourceUrl?: string;
 }
@@ -1826,11 +1970,13 @@ export function renderImportedPostTemplate(
   }
 
   // 4. Substitute all remaining Master Template placeholders safely (exact same image for {{IMAGE_URL}} & {{THUMBNAIL_URL}})
-  const rendered = output
+  const renderedWithVars = output
     .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
     .replace(/\{\{IMAGE_URL\}\}/g, () => safeImageUrl)
     .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeImageUrl)
     .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
+
+  const rendered = applyMetaDescriptionToTemplate(renderedWithVars, data.metaDescription);
 
   // 5. Apply ONLY configured & enabled Ads Settings and deduplicate
   const secured = ensureMasterAdConfiguration(rendered, authoritativeMaster, adsSettings);

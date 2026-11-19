@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { escapeHtml } from '../lib/sanitizer';
 import {
+  applyMetaDescriptionToTemplate,
   DEFAULT_MASTER_TEMPLATE,
   ensureMainImageFirstInPostHtml,
   renderImportedPostTemplate,
@@ -19,6 +20,7 @@ export interface TemplateVariables {
   imageUrl: string;
   thumbnailUrl?: string;
   caption: string;
+  metaDescription?: string;
   publishedDate?: string;
 }
 
@@ -40,6 +42,7 @@ export function loadMasterTemplate(): string {
 /**
  * Injects all dynamic variables and active Ads Settings into the master HTML template before Blogger publishing:
  * - {{TITLE}}
+ * - {{META_DESCRIPTION}}
  * - {{IMAGE_URL}} (always used as the Blogger post thumbnail & first image)
  * - {{CAPTION}}
  * - {{PUBLISHED_DATE}}
@@ -68,13 +71,14 @@ export function renderTemplate(
       timeStyle: 'short',
     });
 
-  const rendered = rawTemplate
+  const renderedWithVars = rawTemplate
     .replace(/\{\{TITLE\}\}/g, () => escapedTitle)
     .replace(/\{\{IMAGE_URL\}\}/g, () => safeImageUrl)
     .replace(/\{\{THUMBNAIL_URL\}\}/g, () => safeImageUrl)
     .replace(/\{\{CAPTION\}\}/g, () => escapedCaption)
     .replace(/\{\{PUBLISHED_DATE\}\}/g, () => formattedDate);
 
+  const rendered = applyMetaDescriptionToTemplate(renderedWithVars, variables.metaDescription);
   const secured = ensureMasterAdConfiguration(rendered, masterTemplate, adsSettings);
   return ensureMainImageFirstInPostHtml(secured, safeImageUrl, variables.title);
 }

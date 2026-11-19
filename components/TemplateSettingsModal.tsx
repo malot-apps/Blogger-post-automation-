@@ -226,6 +226,7 @@ function TemplateSettingsDialog({
   };
 
   const hasTitle = templateText.includes('{{TITLE}}');
+  const hasMetaDescription = templateText.includes('{{META_DESCRIPTION}}');
   const hasImage = templateText.includes('{{IMAGE_URL}}');
   const hasCaption = templateText.includes('{{CAPTION}}');
   const hasDate = templateText.includes('{{PUBLISHED_DATE}}');
@@ -366,6 +367,19 @@ function TemplateSettingsDialog({
                   >
                     {hasDate && <Check className="w-3 h-3 text-emerald-600 mr-0.5" />}
                     <span>&#123;&#123;PUBLISHED_DATE&#125;&#125;</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleInsertTag('{{META_DESCRIPTION}}')}
+                    className={`text-[11px] font-mono px-2 py-1 rounded-md border flex items-center space-x-1 ${
+                      hasMetaDescription
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-medium'
+                        : 'bg-slate-100 border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    {hasMetaDescription && <Check className="w-3 h-3 text-emerald-600 mr-0.5" />}
+                    <span>&#123;&#123;META_DESCRIPTION&#125;&#125;</span>
                   </button>
                 </div>
               </div>

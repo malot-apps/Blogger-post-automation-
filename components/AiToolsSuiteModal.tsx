@@ -22,6 +22,7 @@ interface AiToolsSuiteModalProps {
   onApplyTitle?: (title: string) => void;
   onApplyCaption?: (caption: string) => void;
   onApplyLabels?: (labels: string) => void;
+  onApplyMetaDescription?: (metaDescription: string) => void;
   initialTopic?: string;
 }
 
@@ -31,6 +32,7 @@ export function AiToolsSuiteModal({
   onApplyTitle,
   onApplyCaption,
   onApplyLabels,
+  onApplyMetaDescription,
   initialTopic = '',
 }: AiToolsSuiteModalProps) {
   const [activeTab, setActiveTab] = useState<'captions' | 'rewrite' | 'labels' | 'seo'>('captions');
@@ -536,6 +538,9 @@ export function AiToolsSuiteModal({
                           onApplyTitle(rewriteResult.enhancedTitle);
                           if (onApplyCaption) onApplyCaption(rewriteResult.enhancedContentHtml);
                           if (onApplyLabels && rewriteResult.labels) onApplyLabels(rewriteResult.labels.join(', '));
+                          if (onApplyMetaDescription && rewriteResult.metaDescription) {
+                            onApplyMetaDescription(rewriteResult.metaDescription);
+                          }
                           onClose();
                         }}
                         className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg flex items-center gap-1 shrink-0 self-start sm:self-center"

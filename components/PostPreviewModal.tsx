@@ -13,6 +13,7 @@ import {
   Tag,
   Image as ImageIcon,
   Film,
+  Search,
 } from 'lucide-react';
 import { renderBloggerPostTemplate } from '@/src/templates/BloggerPostTemplate';
 import type { AdsSettings } from '@/src/lib/adsSettings';
@@ -24,6 +25,7 @@ interface PostPreviewModalProps {
   imageUrl: string;
   thumbnailUrl?: string;
   caption: string;
+  metaDescription?: string;
   labels: string;
   templateString: string;
   adsSettings?: AdsSettings;
@@ -39,6 +41,7 @@ export function PostPreviewModal({
   imageUrl,
   thumbnailUrl,
   caption,
+  metaDescription,
   labels,
   templateString,
   adsSettings,
@@ -59,6 +62,7 @@ export function PostPreviewModal({
       imageUrl,
       thumbnailUrl: imageUrl,
       caption,
+      metaDescription,
     },
     adsSettings
   );
@@ -148,6 +152,12 @@ export function PostPreviewModal({
               <Film className="w-3 h-3 text-purple-500" />
               <span>Thumbnail: {imageUrl || thumbnailUrl ? 'Main Image' : 'Not Set'}</span>
             </span>
+            {metaDescription?.trim() && (
+              <span className="flex items-center space-x-1 text-emerald-700 font-medium">
+                <Search className="w-3 h-3 text-emerald-600" />
+                <span>Meta Description: {metaDescription.trim().length} chars</span>
+              </span>
+            )}
           </div>
         </div>
 

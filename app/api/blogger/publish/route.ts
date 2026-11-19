@@ -82,11 +82,17 @@ export async function POST(req: NextRequest) {
       sourceUrl,
       isImported,
       title,
+      metaDescription,
       labels,
       customTemplate,
       adsSettings,
       isDraft,
     } = body;
+
+    const customMetaDescription =
+      typeof metaDescription === 'string' && metaDescription.trim().length > 0
+        ? metaDescription.trim()
+        : undefined;
 
     const validatedAdsSettings = adsSettings ? sanitizeAdsSettings(adsSettings) : undefined;
     const effectiveTemplateInput =
@@ -213,6 +219,7 @@ export async function POST(req: NextRequest) {
         thumbnailUrl: primaryImg,
         firstImageAlt: selectedImgMeta?.alt,
         firstImageSrcset: selectedImgMeta?.srcset,
+        metaDescription: customMetaDescription,
         sourceUrl: safeBaseUrl,
         publishedDate:
           typeof body.publishedDate === 'string' && body.publishedDate.trim().length > 0
@@ -322,6 +329,7 @@ export async function POST(req: NextRequest) {
       imageUrl: verifiedMainImageUrl,
       thumbnailUrl: verifiedMainImageUrl,
       caption: caption.trim(),
+      metaDescription: customMetaDescription,
     }, validatedAdsSettings);
 
     // Step 7: Call Blogger API v3 to create and publish post to THAT USER's selected blog

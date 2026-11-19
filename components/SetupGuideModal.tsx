@@ -146,6 +146,10 @@ export function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
                 <code className="text-orange-700 font-bold">&#123;&#123;PUBLISHED_DATE&#125;&#125;</code>
                 <p className="text-slate-500 font-sans text-[10px] mt-0.5">Publication date string</p>
               </div>
+              <div className="bg-slate-100 p-2 rounded-lg border border-slate-200 col-span-2">
+                <code className="text-orange-700 font-bold">&#123;&#123;META_DESCRIPTION&#125;&#125;</code>
+                <p className="text-slate-500 font-sans text-[10px] mt-0.5">Custom SEO meta description tag</p>
+              </div>
             </div>
           </div>
 
