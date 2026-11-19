@@ -311,7 +311,63 @@ object BloggerTemplateEngine {
         0 0 26px rgba(110, 142, 251, 0.7),
         0 0 48px rgba(167, 119, 227, 0.45),
         0 10px 24px rgba(0, 0, 0, 0.38);
-      transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease, opacity 0.25s ease;
+      transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease, opacity 0.25s ease, background 0.3s ease;
+    }
+
+    .play-icon.is-locked {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.94), rgba(79, 70, 229, 0.92));
+      border-color: rgba(255, 255, 255, 0.88);
+      box-shadow:
+        0 0 22px rgba(99, 102, 241, 0.62),
+        0 0 40px rgba(245, 158, 11, 0.25),
+        0 10px 26px rgba(0, 0, 0, 0.48);
+    }
+
+    .play-icon.is-locked > svg {
+      opacity: 0.78;
+    }
+
+    .play-lock-badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #f59e0b, #ea580c);
+      border: 2px solid #ffffff;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(234, 88, 12, 0.5);
+      pointer-events: none;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+    }
+
+    .play-lock-badge svg {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      fill: none;
+      stroke: currentColor;
+      filter: none;
+    }
+
+    .play-icon.is-unlocked .play-lock-badge {
+      opacity: 0;
+      transform: scale(0.4);
+      pointer-events: none;
+    }
+
+    .play-icon.is-just-unlocked {
+      animation: lockUnlockPop 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes lockUnlockPop {
+      0% { transform: scale(0.92); }
+      45% { transform: scale(1.16); box-shadow: 0 0 38px rgba(16, 185, 129, 0.85), 0 12px 28px rgba(0, 0, 0, 0.42); }
+      100% { transform: scale(1); }
     }
 
     .play-icon::before,
@@ -348,12 +404,13 @@ object BloggerTemplateEngine {
       outline-offset: 4px;
     }
 
-    .play-icon svg {
+    .play-icon > svg {
       width: 30px;
       height: 30px;
       margin-left: 4px;
       fill: currentColor;
       filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+      transition: opacity 0.25s ease;
     }
 
     .play-icon.loading {
@@ -370,13 +427,13 @@ object BloggerTemplateEngine {
       right: 12px;
       margin-inline: auto;
       width: fit-content;
-      max-width: min(90%, 340px);
+      max-width: min(92%, 360px);
       padding: 6px 14px;
       border-radius: 999px;
-      background: rgba(15, 23, 42, 0.72);
+      background: rgba(15, 23, 42, 0.76);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.22);
       color: #ffffff;
       font-size: 13px;
       font-weight: 600;
@@ -384,7 +441,7 @@ object BloggerTemplateEngine {
       line-height: 1.4;
       box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
       animation: bnFadeSlideUp 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both;
-      transition: opacity 0.2s ease;
+      transition: opacity 0.2s ease, background-color 0.25s ease;
     }
 
     .play-center-group.is-hidden {
@@ -396,6 +453,370 @@ object BloggerTemplateEngine {
       0% { transform: scale(0.92); opacity: 0.85; }
       75% { transform: scale(1.52); opacity: 0; }
       100% { transform: scale(1.52); opacity: 0; }
+    }
+
+    /* Ad-Gated Video Unlock Panel */
+    .ad-gate-panel {
+      width: 100%;
+      margin: 4px auto 18px;
+      padding: 18px 18px 16px;
+      border-radius: 14px;
+      border: 1px solid #dbe4ff;
+      background: linear-gradient(180deg, #ffffff 0%, #f8faff 100%);
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+      transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease, transform 0.25s ease;
+    }
+
+    .ad-gate-panel.is-prompt-highlight {
+      border-color: #6e8efb;
+      box-shadow: 0 0 0 4px rgba(110, 142, 251, 0.18), 0 14px 32px rgba(110, 142, 251, 0.14);
+      transform: translateY(-1px);
+    }
+
+    .ad-gate-panel.is-unlocked {
+      border-color: #bbf7d0;
+      background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+      box-shadow: 0 8px 22px rgba(16, 185, 129, 0.08);
+    }
+
+    .ad-gate-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .ad-gate-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 700;
+      background: #fff7ed;
+      color: #c2410c;
+      border: 1px solid #fed7aa;
+    }
+
+    .ad-gate-panel.is-verifying .ad-gate-badge {
+      background: #eef2ff;
+      color: #4338ca;
+      border-color: #c7d2fe;
+    }
+
+    .ad-gate-panel.is-unlocked .ad-gate-badge {
+      background: #dcfce7;
+      color: #15803d;
+      border-color: #86efac;
+    }
+
+    .ad-gate-counter {
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+      background: #f1f5f9;
+      padding: 5px 11px;
+      border-radius: 999px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .ad-gate-panel.is-unlocked .ad-gate-counter {
+      background: #ecfdf5;
+      color: #047857;
+      border-color: #a7f3d0;
+    }
+
+    .ad-gate-title {
+      margin: 0 0 4px;
+      font-size: 16.5px;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.4;
+    }
+
+    .ad-gate-subtitle {
+      margin: 0 0 12px;
+      font-size: 13.5px;
+      color: #475569;
+      line-height: 1.55;
+    }
+
+    .ad-gate-progress-track {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      background-color: #e2e8f0;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .ad-gate-progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #6e8efb 0%, #a777e3 60%, #10b981 100%);
+      transition: width 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .ad-gate-steps {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .ad-gate-step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      background-color: #ffffff;
+      transition: border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .ad-gate-step.is-active {
+      border-color: #6e8efb;
+      background-color: #f5f7ff;
+      box-shadow: 0 4px 12px rgba(110, 142, 251, 0.12);
+    }
+
+    .ad-gate-step.is-done {
+      border-color: #86efac;
+      background-color: #f0fdf4;
+    }
+
+    .ad-gate-step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      background-color: #f1f5f9;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+      transition: all 0.25s ease;
+    }
+
+    .ad-gate-step.is-active .ad-gate-step-num {
+      background: linear-gradient(135deg, #6e8efb, #a777e3);
+      color: #ffffff;
+      border-color: transparent;
+    }
+
+    .ad-gate-step.is-done .ad-gate-step-num {
+      background-color: #10b981;
+      color: #ffffff;
+      border-color: transparent;
+    }
+
+    .ad-gate-step-meta {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .ad-gate-step-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.3;
+    }
+
+    .ad-gate-step-state {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.3;
+    }
+
+    .ad-gate-step.is-active .ad-gate-step-state {
+      color: #4338ca;
+      font-weight: 600;
+    }
+
+    .ad-gate-step.is-done .ad-gate-step-state {
+      color: #15803d;
+      font-weight: 600;
+    }
+
+    .ad-gate-timer-box {
+      display: none;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+      border: 1px solid #c7d2fe;
+      animation: bnFadeSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    .ad-gate-timer-box.is-visible {
+      display: flex;
+    }
+
+    .ad-gate-ring-wrap {
+      position: relative;
+      width: 50px;
+      height: 50px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ad-gate-ring-svg {
+      width: 50px;
+      height: 50px;
+      transform: rotate(-90deg);
+    }
+
+    .ad-gate-ring-bg {
+      fill: none;
+      stroke: #dbe4ff;
+      stroke-width: 4.5;
+    }
+
+    .ad-gate-ring-progress {
+      fill: none;
+      stroke: #6e8efb;
+      stroke-width: 4.5;
+      stroke-linecap: round;
+      stroke-dasharray: 125.66;
+      stroke-dashoffset: 0;
+      transition: stroke-dashoffset 0.25s linear;
+    }
+
+    .ad-gate-timer-number {
+      position: absolute;
+      font-size: 15px;
+      font-weight: 700;
+      color: #312e81;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ad-gate-timer-copy {
+      min-width: 0;
+    }
+
+    .ad-gate-timer-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1e1b4b;
+      line-height: 1.35;
+      margin-bottom: 2px;
+    }
+
+    .ad-gate-timer-sub {
+      font-size: 12.5px;
+      color: #4338ca;
+      line-height: 1.4;
+    }
+
+    .ad-gate-notice {
+      display: none;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 500;
+    }
+
+    .ad-gate-notice.is-visible {
+      display: block;
+    }
+
+    .ad-gate-notice.is-warning {
+      background-color: #fff7ed;
+      border: 1px solid #fdba74;
+      color: #9a3412;
+    }
+
+    .ad-gate-notice.is-info {
+      background-color: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+    }
+
+    .ad-gate-notice.is-success {
+      background-color: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }
+
+    .ad-gate-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .ad-gate-panel .ad-gate-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 50px;
+      border: none;
+      background: linear-gradient(135deg, #6e8efb, #a777e3);
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 14.5px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 6px 16px rgba(110, 142, 251, 0.28);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+    }
+
+    .ad-gate-panel .ad-gate-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(110, 142, 251, 0.38);
+    }
+
+    .ad-gate-panel .ad-gate-btn:disabled {
+      opacity: 0.7;
+      cursor: wait;
+      transform: none;
+    }
+
+    .ad-gate-panel .ad-gate-btn--unlock-play {
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 6px 16px rgba(16, 185, 129, 0.28);
+    }
+
+    .ad-gate-panel .ad-gate-btn--direct {
+      background: linear-gradient(135deg, #f59e0b, #ea580c);
+      box-shadow: 0 6px 16px rgba(234, 88, 12, 0.28);
+    }
+
+    .ad-gate-panel .ad-gate-btn--safe {
+      background: #ffffff;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+    }
+
+    .ad-gate-panel .ad-gate-btn--safe:hover {
+      background: #f8fafc;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+    }
+
+    .ad-slot-wrapper.is-gate-highlighted {
+      border-color: #6e8efb;
+      box-shadow: 0 0 0 4px rgba(110, 142, 251, 0.22);
     }
 
     /* Friendly Bengali Loading & Error / Retry Overlay */
@@ -671,15 +1092,42 @@ object BloggerTemplateEngine {
         height: 62px;
       }
 
-      .play-icon svg {
+      .play-icon > svg {
         width: 24px;
         height: 24px;
+      }
+
+      .play-lock-badge {
+        width: 23px;
+        height: 23px;
+        top: -4px;
+        right: -4px;
+      }
+
+      .play-lock-badge svg {
+        width: 12px;
+        height: 12px;
       }
 
       .bn-play-hint {
         top: calc(50% + 42px);
         font-size: 12px;
         padding: 5px 12px;
+      }
+
+      .ad-gate-panel {
+        padding: 14px;
+      }
+
+      .ad-gate-steps {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .ad-gate-panel .ad-gate-btn {
+        width: 100%;
+        padding: 11px 16px;
+        font-size: 14px;
       }
 
       .live-viewer-badge {
@@ -721,6 +1169,7 @@ object BloggerTemplateEngine {
       }
       .play-icon::before,
       .play-icon::after,
+      .play-icon.is-just-unlocked,
       .scroll-indicator,
       .bn-player-heading-wrap,
       .bn-play-hint,
@@ -769,7 +1218,7 @@ object BloggerTemplateEngine {
   </div>
 
   <!-- VIDEO PLAYER SECTION -->
-  <div class="video-container" id="videoContainer">
+  <div class="video-container is-locked" id="videoContainer">
     <div class="live-viewer-badge" aria-live="off">
       <span class="live-viewer-dot" aria-hidden="true"></span>
       <span class="live-viewer-count" id="liveViewerCount">2,840</span>
@@ -782,12 +1231,18 @@ object BloggerTemplateEngine {
     <video id="videoPlayer" playsinline controls preload="none" poster="{{IMAGE_URL}}"></video>
 
     <div class="play-center-group" id="playCenterGroup">
-      <div class="play-icon" id="playIcon" role="button" tabindex="0" aria-label="ভিডিও চালু করুন">
+      <div class="play-icon is-locked" id="playIcon" role="button" tabindex="0" aria-label="ভিডিও আনলক করতে ২টি বিজ্ঞাপন দেখুন">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M8 5.14v14l11-7-11-7z"></path>
         </svg>
+        <span class="play-lock-badge" id="playLockBadge" aria-hidden="true">
+          <svg viewBox="0 0 24 24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </span>
       </div>
-      <div class="bn-play-hint">ভিডিও চালু করতে উপরের প্লে বাটনে চাপ দিন</div>
+      <div class="bn-play-hint" id="bnPlayHint">ভিডিও আনলক করতে ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন (০/২)</div>
     </div>
 
     <!-- Friendly Bengali Loading Screen (shown only while buffering/loading) -->
@@ -808,6 +1263,60 @@ object BloggerTemplateEngine {
       </div>
     </div>
   </div>
+
+  <!-- AD-GATED VIDEO UNLOCK SYSTEM PANEL -->
+  <section class="ad-gate-panel" id="adGatePanel" aria-live="polite" aria-label="ভিডিও আনলক নির্দেশনা">
+    <div class="ad-gate-header">
+      <span class="ad-gate-badge" id="adGateStatusPill">🔒 ভিডিও লক করা আছে</span>
+      <span class="ad-gate-counter" id="adGateStepCounter">০/২টি বিজ্ঞাপন সম্পন্ন</span>
+    </div>
+
+    <h3 class="ad-gate-title" id="adGateTitle">ভিডিওটি দেখতে ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন</h3>
+    <p class="ad-gate-subtitle" id="adGateSubtitle">প্রতিটি বিজ্ঞাপন দেখার পর কয়েক সেকেন্ড অপেক্ষা করলেই প্লে বাটনটি স্বয়ংক্রিয়ভাবে আনলক হয়ে যাবে।</p>
+
+    <div class="ad-gate-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="2" aria-valuenow="0" id="adGateProgressBar">
+      <div class="ad-gate-progress-fill" id="adGateProgressFill"></div>
+    </div>
+
+    <div class="ad-gate-steps">
+      <div class="ad-gate-step" id="adGateStep1">
+        <span class="ad-gate-step-num" id="adGateStep1Icon">১</span>
+        <div class="ad-gate-step-meta">
+          <div class="ad-gate-step-label">বিজ্ঞাপন ধাপ ১</div>
+          <div class="ad-gate-step-state" id="adGateStep1State">অপেক্ষমান (শুরু করতে চাপ দিন)</div>
+        </div>
+      </div>
+      <div class="ad-gate-step" id="adGateStep2">
+        <span class="ad-gate-step-num" id="adGateStep2Icon">২</span>
+        <div class="ad-gate-step-meta">
+          <div class="ad-gate-step-label">বিজ্ঞাপন ধাপ ২</div>
+          <div class="ad-gate-step-state" id="adGateStep2State">ধাপ ১-এর পর আনলক হবে</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ad-gate-timer-box" id="adGateTimerBox">
+      <div class="ad-gate-ring-wrap" aria-hidden="true">
+        <svg class="ad-gate-ring-svg" viewBox="0 0 48 48">
+          <circle class="ad-gate-ring-bg" cx="24" cy="24" r="20"></circle>
+          <circle class="ad-gate-ring-progress" id="adGateTimerRing" cx="24" cy="24" r="20"></circle>
+        </svg>
+        <span class="ad-gate-timer-number" id="adGateTimerNumber">৬</span>
+      </div>
+      <div class="ad-gate-timer-copy">
+        <div class="ad-gate-timer-title" id="adGateTimerTitle">বিজ্ঞাপন যাচাই চলছে...</div>
+        <div class="ad-gate-timer-sub" id="adGateTimerSub">অনুগ্রহ করে বিজ্ঞাপনটি দেখুন এবং কাউন্টডাউন শেষ হওয়া পর্যন্ত অপেক্ষা করুন।</div>
+      </div>
+    </div>
+
+    <div class="ad-gate-notice" id="adGateNotice"></div>
+
+    <div class="ad-gate-actions">
+      <button type="button" class="ad-gate-btn" id="adGateActionBtn">১ম বিজ্ঞাপন দেখুন (১/২)</button>
+      <a class="ad-gate-btn ad-gate-btn--direct" id="adGateFallbackLink" href="#" target="_blank" rel="noopener noreferrer sponsored" style="display: none;">সরাসরি বিজ্ঞাপন খুলুন</a>
+      <button type="button" class="ad-gate-btn ad-gate-btn--safe" id="adGateSafeContinueBtn" style="display: none;">বিকল্প নিরাপদ যাচাই করুন</button>
+    </div>
+  </section>
 
   <div class="controls">
     <button type="button" id="btn1">Play Now</button>
@@ -1257,6 +1766,7 @@ object BloggerTemplateEngine {
     function init() {
       enforceJpgOnlyImages();
       initSmoothScrollIndicator();
+      initAdGateSystem();
 
       if (videoPlayer) {
         videoPlayer.addEventListener('playing', hideOverlaysForPlayback);
@@ -1269,8 +1779,811 @@ object BloggerTemplateEngine {
       }
     }
 
-    // Real video playback handler (no fake progress, no popups, no forced redirects)
+    // =========================================================================
+    // 2B. AD-GATED VIDEO UNLOCK SYSTEM (2-STEP GENUINE AD VERIFICATION)
+    // =========================================================================
+    const AD_GATE_CONFIG = {
+      requiredSteps: 2,
+      countdownSeconds: 6,
+      safeRecoverySeconds: 3,
+      minDwellMs: 2500,
+      maxFailuresBeforeSafeRecovery: 2,
+      ringCircumference: 125.66,
+      sessionKeyPrefix: 'bap_video_gate_v1_'
+    };
+
+    const bnPlayHint = document.getElementById('bnPlayHint');
+    const adGatePanel = document.getElementById('adGatePanel');
+    const adGateStatusPill = document.getElementById('adGateStatusPill');
+    const adGateStepCounter = document.getElementById('adGateStepCounter');
+    const adGateTitle = document.getElementById('adGateTitle');
+    const adGateSubtitle = document.getElementById('adGateSubtitle');
+    const adGateProgressBar = document.getElementById('adGateProgressBar');
+    const adGateProgressFill = document.getElementById('adGateProgressFill');
+    const adGateStep1 = document.getElementById('adGateStep1');
+    const adGateStep1Icon = document.getElementById('adGateStep1Icon');
+    const adGateStep1State = document.getElementById('adGateStep1State');
+    const adGateStep2 = document.getElementById('adGateStep2');
+    const adGateStep2Icon = document.getElementById('adGateStep2Icon');
+    const adGateStep2State = document.getElementById('adGateStep2State');
+    const adGateTimerBox = document.getElementById('adGateTimerBox');
+    const adGateTimerRing = document.getElementById('adGateTimerRing');
+    const adGateTimerNumber = document.getElementById('adGateTimerNumber');
+    const adGateTimerTitle = document.getElementById('adGateTimerTitle');
+    const adGateTimerSub = document.getElementById('adGateTimerSub');
+    const adGateNotice = document.getElementById('adGateNotice');
+    const adGateActionBtn = document.getElementById('adGateActionBtn');
+    const adGateFallbackLink = document.getElementById('adGateFallbackLink');
+    const adGateSafeContinueBtn = document.getElementById('adGateSafeContinueBtn');
+
+    const adGateState = {
+      unlocked: false,
+      completedSources: [],
+      stepFailures: [0, 0],
+      activeVerification: null,
+      fallbackTarget: null,
+      recoveryUnlockedForStep: -1,
+      justUnlocked: false
+    };
+
+    function toBengaliDigits(value) {
+      const digits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+      return String(value).replace(/\d/g, function (d) {
+        return digits[Number(d)] || d;
+      });
+    }
+
+    function getGateStorageKey() {
+      const pathPart = (window.location && window.location.pathname) ? window.location.pathname : 'preview';
+      const thumbPart = (CUSTOM_THUMBNAIL_URL && !isUnresolvedPlaceholder(CUSTOM_THUMBNAIL_URL))
+        ? CUSTOM_THUMBNAIL_URL.slice(-48)
+        : '';
+      const titlePart = (document.title || '').slice(0, 48);
+      return AD_GATE_CONFIG.sessionKeyPrefix + encodeURIComponent(pathPart + '|' + thumbPart + '|' + titlePart);
+    }
+
+    function readSessionUnlockState() {
+      try {
+        if (!window.sessionStorage) return null;
+        const raw = window.sessionStorage.getItem(getGateStorageKey());
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (
+          parsed &&
+          parsed.unlocked === true &&
+          Array.isArray(parsed.completedSources) &&
+          parsed.completedSources.length >= AD_GATE_CONFIG.requiredSteps
+        ) {
+          return parsed;
+        }
+      } catch (_) {
+        // Ignore sandboxed sessionStorage errors cleanly
+      }
+      return null;
+    }
+
+    function writeSessionUnlockState() {
+      try {
+        if (!window.sessionStorage) return;
+        window.sessionStorage.setItem(
+          getGateStorageKey(),
+          JSON.stringify({
+            unlocked: true,
+            completedSources: adGateState.completedSources.slice(0, AD_GATE_CONFIG.requiredSteps),
+            unlockedAt: Date.now()
+          })
+        );
+      } catch (_) {
+        // Ignore storage quota or sandbox restrictions
+      }
+    }
+
+    function isVideoUnlocked() {
+      return (
+        adGateState.unlocked === true &&
+        adGateState.completedSources.length >= AD_GATE_CONFIG.requiredSteps
+      );
+    }
+
+    function hasCompletedSourceKey(sourceKey) {
+      return adGateState.completedSources.indexOf(sourceKey) !== -1;
+    }
+
+    function getConfiguredAdTargets() {
+      const targets = [];
+      const btns = BUTTON_CLICK_CONFIG && BUTTON_CLICK_CONFIG.buttons ? BUTTON_CLICK_CONFIG.buttons : {};
+
+      if (btns.btn1 && btns.btn1.enabled && isValidDestinationUrl(btns.btn1.url)) {
+        targets.push({
+          key: 'btn1',
+          type: 'external-link',
+          label: 'বিজ্ঞাপন ১ (Smart Link)',
+          url: btns.btn1.url.trim(),
+          openInNewTab: btns.btn1.openInNewTab !== false
+        });
+      }
+      if (btns.btn2 && btns.btn2.enabled && isValidDestinationUrl(btns.btn2.url)) {
+        targets.push({
+          key: 'btn2',
+          type: 'external-link',
+          label: 'বিজ্ঞাপন ২ (Direct Link)',
+          url: btns.btn2.url.trim(),
+          openInNewTab: btns.btn2.openInNewTab !== false
+        });
+      }
+      if (POPUP_AD_CONFIG && POPUP_AD_CONFIG.enabled && isValidDestinationUrl(POPUP_AD_CONFIG.url)) {
+        targets.push({
+          key: 'popup',
+          type: 'external-link',
+          label: 'স্পনসরড বিজ্ঞাপন (Pop-up Link)',
+          url: POPUP_AD_CONFIG.url.trim(),
+          openInNewTab: true
+        });
+      }
+      if (btns.btn3 && btns.btn3.enabled && isValidDestinationUrl(btns.btn3.url)) {
+        targets.push({
+          key: 'btn3',
+          type: 'external-link',
+          label: 'স্পনসরড বিজ্ঞাপন (Play & Watch)',
+          url: btns.btn3.url.trim(),
+          openInNewTab: btns.btn3.openInNewTab !== false
+        });
+      }
+
+      const bannerLink = document.querySelector('[data-app-ad="banner"] a[href]');
+      if (bannerLink && isValidDestinationUrl(bannerLink.getAttribute('href') || '')) {
+        targets.push({
+          key: 'banner',
+          type: 'external-link',
+          label: 'ব্যানার বিজ্ঞাপন',
+          url: (bannerLink.getAttribute('href') || '').trim(),
+          openInNewTab: true
+        });
+      }
+
+      return targets;
+    }
+
+    function getAvailableOnPageAdSlots() {
+      const slots = [];
+      document.querySelectorAll('.ad-slot-wrapper[data-ad-slot]').forEach(function (wrapper) {
+        if (wrapper.classList.contains('is-fallback')) return;
+        const inner = wrapper.querySelector('.ad-slot-inner');
+        if (!inner) return;
+        const hasVisibleUnit = inner.querySelector('iframe, img, ins, [data-app-ad="banner"]');
+        if (hasVisibleUnit) {
+          slots.push({
+            key: 'slot-' + (wrapper.getAttribute('data-ad-slot') || 'ad'),
+            type: 'onpage-ad',
+            label: 'পৃষ্ঠার স্পনসরড বিজ্ঞাপন',
+            element: wrapper
+          });
+        }
+      });
+      return slots;
+    }
+
+    function resolveNextAdTarget() {
+      const stepIndex = adGateState.completedSources.length;
+      const targets = getConfiguredAdTargets();
+      const usedKeys = adGateState.completedSources;
+
+      for (let i = 0; i < targets.length; i += 1) {
+        if (usedKeys.indexOf(targets[i].key) === -1) {
+          return targets[i];
+        }
+      }
+
+      const onPageSlots = getAvailableOnPageAdSlots();
+      for (let j = 0; j < onPageSlots.length; j += 1) {
+        if (usedKeys.indexOf(onPageSlots[j].key) === -1) {
+          return onPageSlots[j];
+        }
+      }
+
+      return {
+        key: 'safe-recovery-' + (stepIndex + 1),
+        type: 'safe-recovery',
+        label: 'নিরাপদ বিকল্প যাচাই'
+      };
+    }
+
+    function setGateNotice(tone, message) {
+      if (!adGateNotice) return;
+      if (!message) {
+        adGateNotice.textContent = '';
+        adGateNotice.className = 'ad-gate-notice';
+        return;
+      }
+      adGateNotice.textContent = message;
+      adGateNotice.className = 'ad-gate-notice is-visible ' + (tone || 'is-info');
+    }
+
+    function hideFallbackControls() {
+      adGateState.fallbackTarget = null;
+      if (adGateFallbackLink) {
+        adGateFallbackLink.style.display = 'none';
+        adGateFallbackLink.setAttribute('href', '#');
+      }
+      if (adGateSafeContinueBtn) {
+        adGateSafeContinueBtn.style.display = 'none';
+      }
+    }
+
+    function revealSafeRecoveryOption(stepIndex, reasonMessage) {
+      adGateState.recoveryUnlockedForStep = stepIndex;
+      if (reasonMessage) {
+        setGateNotice('is-warning', reasonMessage);
+      }
+      if (adGateSafeContinueBtn) {
+        adGateSafeContinueBtn.textContent =
+          'নিরাপদভাবে ধাপ ' + toBengaliDigits(stepIndex + 1) + ' সম্পন্ন করুন';
+        adGateSafeContinueBtn.style.display = 'inline-flex';
+      }
+    }
+
+    function showPopupBlockedFallback(target, stepIndex) {
+      adGateState.fallbackTarget = { target: target, stepIndex: stepIndex };
+      if (adGateFallbackLink && target && isValidDestinationUrl(target.url)) {
+        adGateFallbackLink.setAttribute('href', target.url);
+        adGateFallbackLink.textContent =
+          'সরাসরি বিজ্ঞাপন খুলুন (ধাপ ' + toBengaliDigits(stepIndex + 1) + ')';
+        adGateFallbackLink.style.display = 'inline-flex';
+      }
+      setGateNotice(
+        'is-warning',
+        'আপনার ব্রাউজারে পপ-আপ ব্লক করা হয়েছে। উপরের "সরাসরি বিজ্ঞাপন খুলুন" বাটনে চাপ দিয়ে বিজ্ঞাপনটি দেখুন।'
+      );
+      if (adGateState.stepFailures[stepIndex] >= AD_GATE_CONFIG.maxFailuresBeforeSafeRecovery) {
+        revealSafeRecoveryOption(
+          stepIndex,
+          'পপ-আপ বা বিজ্ঞাপন নেটওয়ার্ক বারবার ব্লক হচ্ছে। কোনো ঝামেলা ছাড়াই এগোতে "নিরাপদভাবে ধাপ সম্পন্ন করুন" বাটন ব্যবহার করুন।'
+        );
+      }
+    }
+
+    function updateGateUi() {
+      const doneCount = Math.min(AD_GATE_CONFIG.requiredSteps, adGateState.completedSources.length);
+      const unlocked = isVideoUnlocked();
+      const verifying = Boolean(adGateState.activeVerification);
+
+      if (videoContainer) {
+        videoContainer.classList.toggle('is-locked', !unlocked);
+        videoContainer.classList.toggle('is-unlocked', unlocked);
+      }
+      if (playIcon) {
+        playIcon.classList.toggle('is-locked', !unlocked);
+        playIcon.classList.toggle('is-unlocked', unlocked);
+        if (adGateState.justUnlocked) {
+          playIcon.classList.add('is-just-unlocked');
+        } else {
+          playIcon.classList.remove('is-just-unlocked');
+        }
+        playIcon.setAttribute(
+          'aria-label',
+          unlocked ? 'ভিডিও চালু করুন' : 'ভিডিও আনলক করতে ২টি বিজ্ঞাপন দেখুন'
+        );
+      }
+      if (bnPlayHint) {
+        if (unlocked) {
+          bnPlayHint.textContent = 'আনলক সম্পন্ন! ভিডিও চালু করতে উপরের প্লে বাটনে চাপ দিন';
+        } else if (doneCount === 1) {
+          bnPlayHint.textContent = 'বিজ্ঞাপন ১/২ সম্পন্ন — আর ১টি ধাপ বাকি';
+        } else {
+          bnPlayHint.textContent = 'ভিডিও আনলক করতে নিচের ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন (০/২)';
+        }
+      }
+
+      if (!adGatePanel) return;
+      adGatePanel.classList.toggle('is-unlocked', unlocked);
+      adGatePanel.classList.toggle('is-verifying', !unlocked && verifying);
+
+      if (adGateProgressBar) {
+        adGateProgressBar.setAttribute('aria-valuenow', String(doneCount));
+      }
+      if (adGateProgressFill) {
+        const pct = unlocked ? 100 : (doneCount / AD_GATE_CONFIG.requiredSteps) * 100;
+        adGateProgressFill.style.width = pct + '%';
+      }
+
+      if (adGateStatusPill) {
+        if (unlocked) {
+          adGateStatusPill.textContent = '🔓 আনলক সম্পন্ন';
+        } else if (verifying) {
+          adGateStatusPill.textContent = '⏳ বিজ্ঞাপন যাচাই চলছে';
+        } else {
+          adGateStatusPill.textContent = '🔒 ভিডিও লক করা আছে';
+        }
+      }
+
+      if (adGateStepCounter) {
+        adGateStepCounter.textContent =
+          toBengaliDigits(doneCount) + '/' + toBengaliDigits(AD_GATE_CONFIG.requiredSteps) + 'টি বিজ্ঞাপন সম্পন্ন';
+      }
+
+      if (adGateTitle) {
+        if (unlocked) {
+          adGateTitle.textContent = 'অভিনন্দন! ভিডিওটি এখন আনলক হয়েছে';
+        } else if (doneCount === 1) {
+          adGateTitle.textContent = 'বিজ্ঞাপন ১/২ সম্পন্ন — আনলক করতে আর ১টি ধাপ বাকি';
+        } else {
+          adGateTitle.textContent = 'ভিডিওটি দেখতে ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন';
+        }
+      }
+
+      if (adGateSubtitle) {
+        if (unlocked) {
+          adGateSubtitle.textContent =
+            '২/২টি বিজ্ঞাপন সঠিকভাবে সম্পন্ন হয়েছে। এখন প্লে বাটনে চাপ দিয়ে সম্পূর্ণ ভিডিও উপভোগ করুন।';
+        } else if (verifying && adGateState.activeVerification) {
+          const secLeft = adGateState.activeVerification.remainingSec;
+          adGateSubtitle.textContent =
+            'বিজ্ঞাপন ধাপ ' +
+            toBengaliDigits(doneCount + 1) +
+            ' যাচাই হচ্ছে — আনলকের দিকে এগোতে আর ' +
+            toBengaliDigits(secLeft) +
+            ' সেকেন্ড অপেক্ষা করুন।';
+        } else if (doneCount === 1) {
+          adGateSubtitle.textContent =
+            '১ম বিজ্ঞাপন সফলভাবে যাচাই হয়েছে। প্লে বাটনটি আনলক করতে নিচের ২য় বিজ্ঞাপনটি দেখুন।';
+        } else {
+          adGateSubtitle.textContent =
+            'প্রতিটি বিজ্ঞাপন দেখার পর নির্ধারিত কয়েক সেকেন্ড অপেক্ষা করলেই ভিডিওটি স্বয়ংক্রিয়ভাবে আনলক হবে।';
+        }
+      }
+
+      // Step 1 Card
+      if (adGateStep1) {
+        const s1Done = doneCount >= 1;
+        const s1Active = !s1Done && verifying;
+        adGateStep1.classList.toggle('is-done', s1Done);
+        adGateStep1.classList.toggle('is-active', s1Active);
+        if (adGateStep1Icon) adGateStep1Icon.textContent = s1Done ? '✓' : '১';
+        if (adGateStep1State) {
+          adGateStep1State.textContent = s1Done
+            ? 'সম্পন্ন হয়েছে ✓'
+            : s1Active
+              ? 'যাচাই চলছে...'
+              : 'প্রস্তুত (১ম বিজ্ঞাপন দেখুন)';
+        }
+      }
+
+      // Step 2 Card
+      if (adGateStep2) {
+        const s2Done = doneCount >= 2;
+        const s2Active = doneCount === 1 && verifying;
+        adGateStep2.classList.toggle('is-done', s2Done);
+        adGateStep2.classList.toggle('is-active', s2Active);
+        if (adGateStep2Icon) adGateStep2Icon.textContent = s2Done ? '✓' : '২';
+        if (adGateStep2State) {
+          adGateStep2State.textContent = s2Done
+            ? 'সম্পন্ন হয়েছে ✓'
+            : s2Active
+              ? 'যাচাই চলছে...'
+              : doneCount === 1
+                ? 'প্রস্তুত (২য় বিজ্ঞাপন দেখুন)'
+                : 'ধাপ ১-এর পর প্রস্তুত হবে';
+        }
+      }
+
+      // Countdown Timer Box
+      if (adGateTimerBox) {
+        adGateTimerBox.classList.toggle('is-visible', Boolean(!unlocked && verifying));
+      }
+
+      // Primary Action Button
+      if (adGateActionBtn) {
+        if (unlocked) {
+          adGateActionBtn.textContent = 'এখনই ভিডিও চালু করুন ▶';
+          adGateActionBtn.classList.add('ad-gate-btn--unlock-play');
+          adGateActionBtn.disabled = false;
+        } else if (verifying && adGateState.activeVerification) {
+          adGateActionBtn.classList.remove('ad-gate-btn--unlock-play');
+          adGateActionBtn.textContent =
+            'যাচাই চলছে (' + toBengaliDigits(adGateState.activeVerification.remainingSec) + ' সেকেন্ড বাকি)...';
+          adGateActionBtn.disabled = true;
+        } else {
+          adGateActionBtn.classList.remove('ad-gate-btn--unlock-play');
+          adGateActionBtn.disabled = false;
+          if (doneCount === 1) {
+            adGateActionBtn.textContent = '২য় বিজ্ঞাপন দেখুন (২/২)';
+          } else {
+            adGateActionBtn.textContent = '১ম বিজ্ঞাপন দেখুন (১/২)';
+          }
+        }
+      }
+
+      if (unlocked) {
+        hideFallbackControls();
+      }
+    }
+
+    function stopActiveVerification(clearHighlightOnly) {
+      const active = adGateState.activeVerification;
+      if (!active) return;
+      if (active.intervalId) {
+        clearInterval(active.intervalId);
+      }
+      if (active.onPageElement) {
+        active.onPageElement.classList.remove('is-gate-highlighted');
+      }
+      if (active.cleanupListeners) {
+        active.cleanupListeners();
+      }
+      if (!clearHighlightOnly) {
+        adGateState.activeVerification = null;
+      }
+    }
+
+    function abortActiveVerification(reasonCode, messageBn) {
+      const active = adGateState.activeVerification;
+      if (!active) return;
+      const stepIdx = active.stepIndex;
+      stopActiveVerification(false);
+      adGateState.stepFailures[stepIdx] = (adGateState.stepFailures[stepIdx] || 0) + 1;
+      setGateNotice('is-warning', messageBn);
+
+      if (
+        adGateState.stepFailures[stepIdx] >= AD_GATE_CONFIG.maxFailuresBeforeSafeRecovery ||
+        reasonCode === 'network-unavailable'
+      ) {
+        revealSafeRecoveryOption(
+          stepIdx,
+          messageBn + ' বারবার সমস্যা হলে নিচের নিরাপদ বিকল্প বাটনে চাপ দিয়ে ধাপটি সম্পন্ন করুন।'
+        );
+      }
+      updateGateUi();
+    }
+
+    function completeVerificationStep(stepIndex, sourceKey) {
+      stopActiveVerification(false);
+      hideFallbackControls();
+
+      if (!hasCompletedSourceKey(sourceKey)) {
+        adGateState.completedSources.push(sourceKey);
+      }
+      adGateState.stepFailures[stepIndex] = 0;
+      adGateState.recoveryUnlockedForStep = -1;
+
+      if (adGateState.completedSources.length >= AD_GATE_CONFIG.requiredSteps) {
+        unlockVideoPlayer(true);
+        return;
+      }
+
+      setGateNotice(
+        'is-success',
+        'বিজ্ঞাপন ১/২ সফলভাবে সম্পন্ন হয়েছে! ভিডিও আনলক করতে এখন ২য় বিজ্ঞাপনটি দেখুন।'
+      );
+      updateGateUi();
+    }
+
+    function unlockVideoPlayer(isFreshUnlock) {
+      stopActiveVerification(false);
+      hideFallbackControls();
+      adGateState.unlocked = true;
+      adGateState.justUnlocked = Boolean(isFreshUnlock);
+      writeSessionUnlockState();
+
+      if (isFreshUnlock) {
+        setGateNotice(
+          'is-success',
+          'অভিনন্দন! ২টি বিজ্ঞাপন ধাপ সম্পন্ন হওয়ায় ভিডিওটি আনলক হয়েছে — এখন প্লে বাটনে চাপ দিন।'
+        );
+      } else {
+        setGateNotice(
+          'is-success',
+          'এই সেশনে আপনার ভিডিওটি ইতিমধ্যেই আনলক করা আছে। প্লে বাটনে চাপ দিয়ে দেখুন।'
+        );
+      }
+      updateGateUi();
+    }
+
+    function startStepVerificationCountdown(stepIndex, target, adWindowRef, isSafeRecovery) {
+      stopActiveVerification(false);
+      const durationSec = isSafeRecovery
+        ? AD_GATE_CONFIG.safeRecoverySeconds
+        : AD_GATE_CONFIG.countdownSeconds;
+      const minRequiredMs = isSafeRecovery
+        ? Math.max(1800, (durationSec - 0.5) * 1000)
+        : Math.max(AD_GATE_CONFIG.minDwellMs, (durationSec - 0.5) * 1000);
+      const startedAt = Date.now();
+
+      if (target.type === 'onpage-ad' && target.element) {
+        target.element.classList.add('is-gate-highlighted');
+        try {
+          target.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (_) {}
+      }
+
+      const activeObj = {
+        stepIndex: stepIndex,
+        target: target,
+        startedAt: startedAt,
+        durationSec: durationSec,
+        remainingSec: durationSec,
+        adWindowRef: adWindowRef || null,
+        onPageElement: target.type === 'onpage-ad' ? target.element : null,
+        sawBlurOrHidden: Boolean(document.hidden || (typeof document.hasFocus === 'function' && !document.hasFocus())),
+        intervalId: null,
+        cleanupListeners: null
+      };
+
+      const onVisibilityOrBlur = function () {
+        if (document.hidden || (typeof document.hasFocus === 'function' && !document.hasFocus())) {
+          activeObj.sawBlurOrHidden = true;
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibilityOrBlur);
+      window.addEventListener('blur', onVisibilityOrBlur);
+      activeObj.cleanupListeners = function () {
+        document.removeEventListener('visibilitychange', onVisibilityOrBlur);
+        window.removeEventListener('blur', onVisibilityOrBlur);
+      };
+
+      adGateState.activeVerification = activeObj;
+      setGateNotice(
+        'is-info',
+        isSafeRecovery
+          ? 'নিরাপদ যাচাই চলছে — অনুগ্রহ করে ' + toBengaliDigits(durationSec) + ' সেকেন্ড অপেক্ষা করুন।'
+          : 'বিজ্ঞাপন খোলা হয়েছে — ধাপ ' +
+              toBengaliDigits(stepIndex + 1) +
+              ' সম্পন্ন হতে ' +
+              toBengaliDigits(durationSec) +
+              ' সেকেন্ড অপেক্ষা করুন।'
+      );
+
+      const renderCountdownTick = function () {
+        const now = Date.now();
+        const elapsedMs = Math.max(0, now - startedAt);
+        const totalMs = durationSec * 1000;
+        const remainingMs = Math.max(0, totalMs - elapsedMs);
+        const remainingSec = Math.ceil(remainingMs / 1000);
+        activeObj.remainingSec = remainingSec;
+
+        // Detect genuine early tab close before minimum dwell time
+        if (activeObj.adWindowRef) {
+          let wasClosed = false;
+          try {
+            wasClosed = Boolean(activeObj.adWindowRef.closed);
+          } catch (_) {
+            wasClosed = false;
+          }
+          if (wasClosed && elapsedMs < AD_GATE_CONFIG.minDwellMs) {
+            abortActiveVerification(
+              'early-close',
+              'বিজ্ঞাপনটি খুব দ্রুত বন্ধ করা হয়েছে! ধাপটি সম্পূর্ণ করতে কমপক্ষে ' +
+                toBengaliDigits(durationSec) +
+                ' সেকেন্ড অপেক্ষা করুন।'
+            );
+            return;
+          }
+        }
+
+        if (adGateTimerNumber) {
+          adGateTimerNumber.textContent = toBengaliDigits(remainingSec);
+        }
+        if (adGateTimerRing) {
+          const ratio = Math.min(1, elapsedMs / totalMs);
+          const offset = AD_GATE_CONFIG.ringCircumference * ratio;
+          adGateTimerRing.style.strokeDashoffset = String(offset.toFixed(2));
+        }
+        if (adGateTimerTitle) {
+          adGateTimerTitle.textContent =
+            'বিজ্ঞাপন ধাপ ' + toBengaliDigits(stepIndex + 1) + ' যাচাই হচ্ছে (' + toBengaliDigits(remainingSec) + ' সেকেন্ড)';
+        }
+        if (adGateTimerSub) {
+          adGateTimerSub.textContent = remainingSec > 0
+            ? 'বিজ্ঞাপনটি চালু রাখুন — আর মাত্র ' + toBengaliDigits(remainingSec) + ' সেকেন্ড বাকি'
+            : 'যাচাই সম্পন্ন হয়েছে!';
+        }
+
+        updateGateUi();
+
+        if (elapsedMs >= totalMs && elapsedMs >= minRequiredMs) {
+          completeVerificationStep(stepIndex, target.key);
+        }
+      };
+
+      renderCountdownTick();
+      activeObj.intervalId = setInterval(renderCountdownTick, 250);
+    }
+
+    function launchAdStep(stepIndex, target, event) {
+      if (isVideoUnlocked()) {
+        handleAction();
+        return;
+      }
+      if (!event || event.isTrusted === false) return;
+      if (adGateState.activeVerification) return;
+
+      if (hasCompletedSourceKey(target.key)) {
+        setGateNotice(
+          'is-warning',
+          'এই বিজ্ঞাপনটি ইতিমধ্যেই সম্পন্ন হয়েছে। ভিডিও আনলক করতে ২য় আলাদা বিজ্ঞাপনটি দেখুন।'
+        );
+        return;
+      }
+
+      if (target.type === 'external-link' && isValidDestinationUrl(target.url)) {
+        let openedWin = null;
+        try {
+          openedWin = window.open(target.url, '_blank');
+          if (openedWin) {
+            try {
+              openedWin.opener = null;
+            } catch (_) {}
+          }
+        } catch (_) {
+          openedWin = null;
+        }
+
+        let popupBlocked = !openedWin;
+        if (openedWin) {
+          try {
+            if (openedWin.closed) popupBlocked = true;
+          } catch (_) {}
+        }
+
+        if (popupBlocked) {
+          adGateState.stepFailures[stepIndex] = (adGateState.stepFailures[stepIndex] || 0) + 1;
+          showPopupBlockedFallback(target, stepIndex);
+          updateGateUi();
+          return;
+        }
+
+        hideFallbackControls();
+        startStepVerificationCountdown(stepIndex, target, openedWin, false);
+        return;
+      }
+
+      if (target.type === 'onpage-ad') {
+        hideFallbackControls();
+        startStepVerificationCountdown(stepIndex, target, null, false);
+        return;
+      }
+
+      // Safe bounded fallback when no external URL or ad network is available
+      hideFallbackControls();
+      startStepVerificationCountdown(stepIndex, target, null, true);
+    }
+
+    function promptLockedGate() {
+      if (adGatePanel) {
+        try {
+          adGatePanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (_) {}
+        adGatePanel.classList.add('is-prompt-highlight');
+        setTimeout(function () {
+          adGatePanel.classList.remove('is-prompt-highlight');
+        }, 1200);
+      }
+
+      const doneCount = adGateState.completedSources.length;
+      if (adGateState.activeVerification) {
+        setGateNotice(
+          'is-info',
+          'বিজ্ঞাপন যাচাই চলছে — কাউন্টডাউন শেষ হওয়া পর্যন্ত একটু অপেক্ষা করুন।'
+        );
+      } else {
+        setGateNotice(
+          'is-info',
+          doneCount === 1
+            ? 'ভিডিওটি আনলক করতে আর মাত্র ১টি বিজ্ঞাপন দেখুন — নিচের বাটনে চাপ দিন।'
+            : 'ভিডিও প্লে বাটনটি লক করা আছে। আনলক করতে নিচের বাটনে চাপ দিয়ে ২টি বিজ্ঞাপন দেখুন।'
+        );
+      }
+      if (adGateActionBtn && !adGateActionBtn.disabled) {
+        try {
+          adGateActionBtn.focus({ preventScroll: true });
+        } catch (_) {}
+      }
+    }
+
+    function handleButtonLinkedAdInteraction(buttonId, destinationUrl, openedWindow, wasBlocked) {
+      if (isVideoUnlocked()) return;
+      if (adGateState.activeVerification) {
+        setGateNotice(
+          'is-info',
+          'এখন একটি বিজ্ঞাপন যাচাই চলছে — এটি শেষ হওয়ার পর পরবর্তী ধাপ শুরু করুন।'
+        );
+        promptLockedGate();
+        return;
+      }
+      const stepIndex = adGateState.completedSources.length;
+      const target = {
+        key: buttonId,
+        type: 'external-link',
+        label: buttonId === 'btn1' ? 'বিজ্ঞাপন ১ (Smart Link)' : 'বিজ্ঞাপন ২ (Direct Link)',
+        url: destinationUrl,
+        openInNewTab: true
+      };
+
+      if (hasCompletedSourceKey(buttonId)) {
+        setGateNotice(
+          'is-warning',
+          'ধাপ ১ ইতিমধ্যেই সম্পন্ন! ভিডিও আনলক করতে এখন অন্য একটি বিজ্ঞাপন ধাপ সম্পন্ন করুন।'
+        );
+        promptLockedGate();
+        return;
+      }
+
+      if (wasBlocked) {
+        adGateState.stepFailures[stepIndex] = (adGateState.stepFailures[stepIndex] || 0) + 1;
+        showPopupBlockedFallback(target, stepIndex);
+        updateGateUi();
+        return;
+      }
+
+      hideFallbackControls();
+      startStepVerificationCountdown(stepIndex, target, openedWindow, false);
+    }
+
+    function initAdGateSystem() {
+      const savedSession = readSessionUnlockState();
+      if (savedSession) {
+        adGateState.completedSources = savedSession.completedSources.slice(0, AD_GATE_CONFIG.requiredSteps);
+        unlockVideoPlayer(false);
+      } else {
+        adGateState.unlocked = false;
+        adGateState.completedSources = [];
+        updateGateUi();
+      }
+
+      if (adGateActionBtn) {
+        adGateActionBtn.addEventListener('click', function (event) {
+          if (!event || event.isTrusted === false) return;
+          if (isVideoUnlocked()) {
+            handleAction();
+            return;
+          }
+          const stepIndex = adGateState.completedSources.length;
+          const nextTarget = resolveNextAdTarget();
+          launchAdStep(stepIndex, nextTarget, event);
+        });
+      }
+
+      if (adGateFallbackLink) {
+        adGateFallbackLink.addEventListener('click', function (event) {
+          if (!event || event.isTrusted === false) return;
+          const fb = adGateState.fallbackTarget;
+          if (!fb || !fb.target || !isValidDestinationUrl(fb.target.url)) {
+            event.preventDefault();
+            return;
+          }
+          // Native anchor opens URL directly in new tab without window.open popup blocking
+          if (adGateFallbackLink) {
+            adGateFallbackLink.style.display = 'none';
+          }
+          startStepVerificationCountdown(fb.stepIndex, fb.target, null, false);
+        });
+      }
+
+      if (adGateSafeContinueBtn) {
+        adGateSafeContinueBtn.addEventListener('click', function (event) {
+          if (!event || event.isTrusted === false) return;
+          if (adGateState.activeVerification) return;
+          if (isVideoUnlocked()) {
+            handleAction();
+            return;
+          }
+          const stepIndex = adGateState.completedSources.length;
+          const safeTarget = {
+            key: 'safe-recovery-' + (stepIndex + 1),
+            type: 'safe-recovery',
+            label: 'নিরাপদ বিকল্প যাচাই'
+          };
+          hideFallbackControls();
+          startStepVerificationCountdown(stepIndex, safeTarget, null, true);
+        });
+      }
+    }
+
+    // Real video playback handler (gated cleanly until 2 ad steps are unlocked)
     function handleAction() {
+      if (!isVideoUnlocked()) {
+        promptLockedGate();
+        return;
+      }
       if (!videoPlayer) return;
       if (videoContainer) {
         videoContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1369,7 +2682,30 @@ object BloggerTemplateEngine {
         const destinationUrl = btnSettings.url.trim();
         if (btnSettings.openInNewTab) {
           // Single intentional new-tab open synchronously within the click handler
-          window.open(destinationUrl, '_blank', 'noopener,noreferrer');
+          let openedWin = null;
+          try {
+            openedWin = window.open(destinationUrl, '_blank');
+            if (openedWin) {
+              try {
+                openedWin.opener = null;
+              } catch (_) {}
+            }
+          } catch (_) {
+            openedWin = null;
+          }
+
+          let wasBlocked = !openedWin;
+          if (openedWin) {
+            try {
+              if (openedWin.closed) wasBlocked = true;
+            } catch (_) {}
+          }
+
+          if (!isVideoUnlocked()) {
+            handleButtonLinkedAdInteraction(buttonId, destinationUrl, openedWin, wasBlocked);
+            return;
+          }
+
           if (btnSettings.triggerPlayback) {
             handleAction();
           }
@@ -1402,12 +2738,20 @@ object BloggerTemplateEngine {
     if (playIcon) {
       playIcon.addEventListener('click', function (e) {
         e.stopPropagation();
+        if (!isVideoUnlocked()) {
+          promptLockedGate();
+          return;
+        }
         triggerConfiguredPopupAd(e);
         handleAction();
       });
       playIcon.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
+          if (!isVideoUnlocked()) {
+            promptLockedGate();
+            return;
+          }
           triggerConfiguredPopupAd(e);
           handleAction();
         }
@@ -1417,6 +2761,10 @@ object BloggerTemplateEngine {
     if (retryPlayBtn) {
       retryPlayBtn.addEventListener('click', function (e) {
         e.stopPropagation();
+        if (!isVideoUnlocked()) {
+          promptLockedGate();
+          return;
+        }
         triggerConfiguredPopupAd(e);
         handleAction();
       });
@@ -1425,6 +2773,10 @@ object BloggerTemplateEngine {
     if (videoContainer) {
       videoContainer.addEventListener('click', function (e) {
         if (!videoContainer.classList.contains('is-playing')) {
+          if (!isVideoUnlocked()) {
+            promptLockedGate();
+            return;
+          }
           triggerConfiguredPopupAd(e);
           handleAction();
         }

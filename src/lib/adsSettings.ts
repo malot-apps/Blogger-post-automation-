@@ -174,6 +174,23 @@ export function isLegacyDefaultTemplate(template?: string | null): boolean {
   if (!template || typeof template !== 'string') return false;
   const trimmed = template.trim();
   if (!trimmed) return false;
+
+  if (trimmed.includes('adGatePanel') && trimmed.includes('initAdGateSystem')) {
+    return false;
+  }
+
+  // Upgrade unmodified prior Master Template builds (pre-Ad-Gate) cleanly while preserving custom user templates
+  const isPriorUnmodifiedMasterDefault =
+    trimmed.includes('bn-player-heading') &&
+    trimmed.includes('BUTTON_CLICK_CONFIG') &&
+    trimmed.includes('initLazyAds') &&
+    trimmed.includes('36d19f913897a5c30f86205584612f58') &&
+    trimmed.includes('https://cheflobesofficer.com/b1b9djat?key=a45917b862f040650d5da9b0f6ceac52');
+
+  if (isPriorUnmodifiedMasterDefault) {
+    return true;
+  }
+
   const hasNewMarkers =
     trimmed.includes('bn-player-heading') ||
     trimmed.includes('BUTTON_CLICK_CONFIG') ||

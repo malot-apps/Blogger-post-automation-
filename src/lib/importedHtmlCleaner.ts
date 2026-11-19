@@ -148,13 +148,13 @@ export const PROMO_CTA_TEXT_REGEX =
   /^(buy now|shop now|check price|get deal|claim offer|download now|free download|download|play now|watch now|play\s*&\s*watch|watch full video|full video|watch video|click here|continue|open link|skip ad|visit link|subscribe now|join telegram|follow us|advertisement|sponsored|loading premium content\.{0,3}|▶\ufe0f?|ভিডিওটি চালু করুন|এখনই দেখুন|পুরো ভিডিও দেখুন|ডাউনলোড করুন|ক্লিক করুন)$/i;
 
 export const PLAYER_OR_AD_CONTAINER_ID_REGEX =
-  /^(container-[a-z0-9_-]{6,}|playIcon|loadingScreen|playbackErrorScreen|playCenterGroup|videoThumbnail|videoPlayer|videoContainer|liveViewerCount|retryPlayBtn|ad-top-banner|ad-native-thumb|ad-player-bottom|ad-in-content|ad-related-content|ad-bottom-banner|btn\d+|ads?|ad[-_]?(?:box|slot|unit|banner|container|wrapper)|sidebar[-_]?ads?)$/i;
+  /^(container-[a-z0-9_-]{6,}|playIcon|playLockBadge|bnPlayHint|loadingScreen|playbackErrorScreen|playCenterGroup|videoThumbnail|videoPlayer|videoContainer|liveViewerCount|retryPlayBtn|adGatePanel|adGateStatusPill|adGateStepCounter|adGateProgressBar|adGateProgressFill|adGateStep\d+(?:Icon|State)?|adGateTimerBox|adGateTimerRing|adGateTimerNumber|adGateTimerTitle|adGateTimerSub|adGateNotice|adGateActionBtn|adGateFallbackLink|adGateSafeContinueBtn|ad-top-banner|ad-native-thumb|ad-player-bottom|ad-in-content|ad-related-content|ad-bottom-banner|btn\d+|ads?|ad[-_]?(?:box|slot|unit|banner|container|wrapper)|sidebar[-_]?ads?)$/i;
 
 export const PLAYER_OR_AD_MARKER_REGEX =
-  /(^|[-_\s])(ad|ads|advert|advertisement|ad-slot|ad-slot-wrapper|ad-slot-inner|ad-slot-label|ad-fallback|ad-box|ad-unit|ad-banner|ad-container|ad-wrapper|adsense|adsbygoogle|adsterra|effectivecpmnetwork|highperformanceformat|mgid|taboola|outbrain|propeller|popads|popcash|monetag|smartlink|direct-link|directlink|sponsored-box|sponsor-banner|promo-banner|promotional-banner|affiliate-box|affiliate-banner|related-posts|related-section|share-buttons|social-share|newsletter-box|subscribe-box|cookie-banner|popup-overlay|blogger-post-footer|video-container|bn-player-heading-wrap|live-viewer-badge|play-center-group|playback-error-screen|scroll-indicator-wrap|controls|play-icon|loading-screen)([-_\s]|$)/i;
+  /(^|[-_\s])(ad|ads|advert|advertisement|ad-slot|ad-slot-wrapper|ad-slot-inner|ad-slot-label|ad-fallback|ad-box|ad-unit|ad-banner|ad-container|ad-wrapper|ad-gate-panel|ad-gate-header|ad-gate-steps|ad-gate-step|ad-gate-timer-box|ad-gate-notice|ad-gate-actions|play-lock-badge|adsense|adsbygoogle|adsterra|effectivecpmnetwork|highperformanceformat|mgid|taboola|outbrain|propeller|popads|popcash|monetag|smartlink|direct-link|directlink|sponsored-box|sponsor-banner|promo-banner|promotional-banner|affiliate-box|affiliate-banner|related-posts|related-section|share-buttons|social-share|newsletter-box|subscribe-box|cookie-banner|popup-overlay|blogger-post-footer|video-container|bn-player-heading-wrap|live-viewer-badge|play-center-group|playback-error-screen|scroll-indicator-wrap|controls|play-icon|loading-screen)([-_\s]|$)/i;
 
 export const FOREIGN_TEMPLATE_NOISE_TEXT_REGEX =
-  /^(loading premium content\.{0,3}|please allow pop-ups for this site.*|sponsored banner|recommended partner|player sponsor|sponsored highlight|more to explore|end of post banner|ad content unavailable right now\.|ভিডিও চালু করতে উপরের প্লে বাটনে চাপ দিন|সম্পূর্ণ ভিডিওটি দেখতে প্লে বাটনে ক্লিক করুন|▶\ufe0f?)$/i;
+  /^(loading premium content\.{0,3}|please allow pop-ups for this site.*|sponsored banner|recommended partner|player sponsor|sponsored highlight|more to explore|end of post banner|ad content unavailable right now\.|ভিডিও চালু করতে উপরের প্লে বাটনে চাপ দিন|সম্পূর্ণ ভিডিওটি দেখতে প্লে বাটনে ক্লিক করুন|ভিডিওটি দেখতে ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন|▶\ufe0f?)$/i;
 
 function hostMatches(hostname: string, patterns: RegExp[]): boolean {
   const clean = hostname.toLowerCase();
@@ -956,7 +956,7 @@ export function sanitizeImportedArticleFragment(
     .replace(/<(script|style|noscript|iframe|frame|frameset|object|embed|applet|form|button|svg|canvas|head|title|template)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
     .replace(/<(script|style|noscript|iframe|frame|embed|object|input|textarea|button|meta|link|base)\b[^>]*\/?>/gi, '')
     .replace(/<aside\b[^>]*\b(?:ad-slot-wrapper|data-ad-slot|data-app-ad)\b[^>]*>[\s\S]*?<\/aside>/gi, '')
-    .replace(/<section\b[^>]*\brelated-section\b[^>]*>[\s\S]*?<\/section>/gi, '')
+    .replace(/<section\b[^>]*\b(?:related-section|ad-gate-panel)\b[^>]*>[\s\S]*?<\/section>/gi, '')
     .replace(/<div\b[^>]*\b(?:class=["'][^"']*\b(?:video-container|controls|play-icon|loading-screen|playback-error-screen|play-center-group|bn-player-heading-wrap|scroll-indicator-wrap|schema-markup|post-schema)\b[^"']*["']|id=["']container-[^"']+["'])[^>]*>[\s\S]*?<\/div>/gi, '');
 
   // Preserve <pre> and <code> blocks while removing entity-escaped/serialized Schema.org JSON-LD text blobs
