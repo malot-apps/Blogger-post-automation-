@@ -41,7 +41,8 @@ import { SetupGuideModal } from '@/components/SetupGuideModal';
 import { PostHistoryModal } from '@/components/PostHistoryModal';
 import { ImportPostsModal } from '@/components/ImportPostsModal';
 import { AiToolsSuiteModal } from '@/components/AiToolsSuiteModal';
-import { AlertCircle, Shield, Lock, Eye, ExternalLink, HelpCircle } from 'lucide-react';
+import { PostPerformanceDashboard } from '@/components/PostPerformanceDashboard';
+import { AlertCircle, Shield, Lock, Eye, ExternalLink, HelpCircle, BarChart3, PenSquare } from 'lucide-react';
 
 const STORAGE_KEY_TEMPLATE = 'blogger_auto_publisher_template';
 const getBlogStorageKey = (uid: string) => `blogger_user_selected_blog_${uid}`;
@@ -121,18 +122,33 @@ export default function Home() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAiSuiteOpen, setIsAiSuiteOpen] = useState(false);
 
+  // Workspace view mode ('composer' | 'dashboard')
+  const [activeView, setActiveView] = useState<'composer' | 'dashboard'>('composer');
+
   // Firestore post history state (strictly isolated per user)
   const [postHistory, setPostHistory] = useState<StoredPublishedPost[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   // Load history from Firestore
   const loadHistory = useCallback(async (userId: string) => {
     setIsLoadingHistory(true);
+    setHistoryError(null);
     try {
-      const items = await fetchPublishedPosts(userId);
+      const items = await fetchPublishedPosts(userId, 100);
       setPostHistory(items);
     } catch (err) {
       console.warn('Could not load history from Firestore:', err);
+      let message = 'Could not load publication history from Firestore.';
+      if (err instanceof Error) {
+        try {
+          const parsed = JSON.parse(err.message) as { error?: string };
+          if (parsed?.error) message = parsed.error;
+        } catch {
+          if (err.message) message = err.message;
+        }
+      }
+      setHistoryError(message);
     } finally {
       setIsLoadingHistory(false);
     }
@@ -252,6 +268,8 @@ export default function Home() {
         setBlogs([]);
         setSelectedBlogId('');
         setPostHistory([]);
+        setHistoryError(null);
+        setActiveView('composer');
         setPublishedPost(null);
       }
     );
@@ -303,6 +321,8 @@ export default function Home() {
     setBlogs([]);
     setSelectedBlogId('');
     setPostHistory([]);
+    setHistoryError(null);
+    setActiveView('composer');
     setPublishedPost(null);
     setMainImageResult(null);
     setMainImageUrlOverride(null);
@@ -475,6 +495,8 @@ export default function Home() {
     setPublishedPost(null);
   };
 
+  const isDashboardWide = Boolean(user && !publishedPost && activeView === 'dashboard');
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-800 antialiased selection:bg-orange-500 selection:text-white">
       {/* Sticky Top Header */}
@@ -490,11 +512,17 @@ export default function Home() {
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenImport={() => setIsImportOpen(true)}
         onOpenAiTools={() => setIsAiSuiteOpen(true)}
+        activeView={activeView}
+        onChangeView={(view) => {
+          setPublishedPost(null);
+          setActiveView(view);
+        }}
+        wideLayout={isDashboardWide}
         onLogout={handleLogout}
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-xl w-full mx-auto p-4 sm:p-5">
+      <main className={`flex-1 ${isDashboardWide ? 'max-w-5xl' : 'max-w-xl'} w-full mx-auto p-4 sm:p-5 transition-all duration-200`}>
         {isAuthChecking ? (
           <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-3">
             <div className="w-10 h-10 border-3 border-orange-500 border-t-transparent rounded-full animate-spin" />
@@ -577,80 +605,131 @@ export default function Home() {
             onReset={handleResetForm}
           />
         ) : (
-          /* Main Workflow Screen: IMAGE -> CAPTION -> PUBLISH */
+          /* Main Workspace: Compose Post | Performance Dashboard */
           <div className="space-y-4">
-            {/* Blog Warning if none found */}
-            {blogs.length === 0 && !isLoadingBlogs && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 flex items-start justify-between">
-                <div>
-                  <p className="font-bold">No Blogger Blogs Found</p>
-                  <p className="mt-0.5 text-amber-700">
-                    Your Google account doesn&apos;t have any active Blogger blogs yet. Create one at blogger.com then tap refresh.
-                  </p>
-                </div>
-                <button
-                  onClick={handleRefreshBlogs}
-                  className="bg-amber-200 hover:bg-amber-300 text-amber-900 font-semibold px-2.5 py-1.5 rounded-lg shrink-0 ml-2"
+            {/* Workspace View Switcher */}
+            <div className="bg-white border border-slate-200 rounded-xl p-1 inline-flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setActiveView('composer')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  activeView === 'composer'
+                    ? 'bg-orange-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <PenSquare className="w-3.5 h-3.5" />
+                <span>Compose Post</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveView('dashboard')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  activeView === 'dashboard'
+                    ? 'bg-orange-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Performance Dashboard</span>
+                <span
+                  className={`tabular-nums text-[11px] ${
+                    activeView === 'dashboard' ? 'text-orange-100' : 'text-slate-400'
+                  }`}
                 >
-                  Refresh
-                </button>
-              </div>
+                  ({postHistory.length})
+                </span>
+              </button>
+            </div>
+
+            {activeView === 'dashboard' ? (
+              <PostPerformanceDashboard
+                posts={postHistory}
+                blogs={blogs}
+                selectedBlogId={selectedBlogId}
+                isLoading={isLoadingHistory || isLoadingBlogs}
+                error={historyError}
+                onRefresh={() => {
+                  if (user) loadHistory(user.uid);
+                }}
+                onCreatePost={() => setActiveView('composer')}
+              />
+            ) : (
+              <>
+                {/* Blog Warning if none found */}
+                {blogs.length === 0 && !isLoadingBlogs && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 flex items-start justify-between">
+                    <div>
+                      <p className="font-bold">No Blogger Blogs Found</p>
+                      <p className="mt-0.5 text-amber-700">
+                        Your Google account doesn&apos;t have any active Blogger blogs yet. Create one at blogger.com then tap refresh.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleRefreshBlogs}
+                      className="bg-amber-200 hover:bg-amber-300 text-amber-900 font-semibold px-2.5 py-1.5 rounded-lg shrink-0 ml-2"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                )}
+
+                {blogsError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 flex items-start space-x-2">
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <span>{blogsError}</span>
+                  </div>
+                )}
+
+                {publishError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 flex items-start space-x-2">
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-semibold">Publishing Error</p>
+                      <p>{publishError}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 1: Image Uploader Area (Main Image -> used as Blogger Post Thumbnail) */}
+                <ImageUploader
+                  mainImageResult={mainImageResult}
+                  mainImageUrlOverride={mainImageUrlOverride}
+                  onMainImageSelected={(res, url) => {
+                    setMainImageResult(res);
+                    setMainImageUrlOverride(url || null);
+                  }}
+                  isProcessing={isProcessingImage}
+                  setIsProcessing={setIsProcessingImage}
+                  onApplyTitle={setTitle}
+                  currentTitle={title}
+                />
+
+                {/* Step 2 & 3: Caption, Options & Publish Action */}
+                <PostForm
+                  caption={caption}
+                  setCaption={setCaption}
+                  title={title}
+                  setTitle={setTitle}
+                  metaDescription={metaDescription}
+                  setMetaDescription={setMetaDescription}
+                  labels={labels}
+                  setLabels={setLabels}
+                  onPreview={() => setIsPreviewOpen(true)}
+                  onPublish={handlePublish}
+                  isPublishing={isPublishing}
+                  canPublish={canPublish}
+                  selectedBlogName={selectedBlog?.name}
+                />
+              </>
             )}
-
-            {blogsError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                <span>{blogsError}</span>
-              </div>
-            )}
-
-            {publishError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-semibold">Publishing Error</p>
-                  <p>{publishError}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Step 1: Image Uploader Area (Main Image -> used as Blogger Post Thumbnail) */}
-            <ImageUploader
-              mainImageResult={mainImageResult}
-              mainImageUrlOverride={mainImageUrlOverride}
-              onMainImageSelected={(res, url) => {
-                setMainImageResult(res);
-                setMainImageUrlOverride(url || null);
-              }}
-              isProcessing={isProcessingImage}
-              setIsProcessing={setIsProcessingImage}
-              onApplyTitle={setTitle}
-              currentTitle={title}
-            />
-
-            {/* Step 2 & 3: Caption, Options & Publish Action */}
-            <PostForm
-              caption={caption}
-              setCaption={setCaption}
-              title={title}
-              setTitle={setTitle}
-              metaDescription={metaDescription}
-              setMetaDescription={setMetaDescription}
-              labels={labels}
-              setLabels={setLabels}
-              onPreview={() => setIsPreviewOpen(true)}
-              onPublish={handlePublish}
-              isPublishing={isPublishing}
-              canPublish={canPublish}
-              selectedBlogName={selectedBlog?.name}
-            />
           </div>
         )}
       </main>
 
       {/* Public Footer */}
       <footer className="mt-auto py-5 border-t border-slate-200 bg-white/70 text-center text-xs text-slate-500">
-        <div className="max-w-xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div className={`${isDashboardWide ? 'max-w-5xl' : 'max-w-xl'} mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 transition-all duration-200`}>
           <div>
             <span>© 2026 Blogger Auto Publisher</span> •{' '}
             <span className="font-mono text-[11px] text-slate-600">blogger-post-automation.vercel.app</span>

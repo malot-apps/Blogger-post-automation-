@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Clock,
   DownloadCloud,
+  BarChart3,
 } from 'lucide-react';
 import type { BloggerBlog } from '@/src/server/bloggerService';
 
@@ -27,6 +28,9 @@ interface HeaderProps {
   onOpenHistory?: () => void;
   onOpenImport?: () => void;
   onOpenAiTools?: () => void;
+  activeView?: 'composer' | 'dashboard';
+  onChangeView?: (view: 'composer' | 'dashboard') => void;
+  wideLayout?: boolean;
   onLogout: () => void;
 }
 
@@ -42,11 +46,14 @@ export function Header({
   onOpenHistory,
   onOpenImport,
   onOpenAiTools,
+  activeView = 'composer',
+  onChangeView,
+  wideLayout = false,
   onLogout,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
-      <div className="max-w-xl mx-auto px-4 py-3">
+      <div className={`${wideLayout ? 'max-w-5xl' : 'max-w-xl'} mx-auto px-4 py-3 transition-all duration-200`}>
         {/* Top Row: Brand & Tools */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
@@ -85,6 +92,23 @@ export function Header({
                 aria-label="AI Tools"
               >
                 <Sparkles className="w-4.5 h-4.5 text-amber-500" />
+              </button>
+            )}
+
+            {user && onChangeView && (
+              <button
+                type="button"
+                onClick={() => onChangeView(activeView === 'dashboard' ? 'composer' : 'dashboard')}
+                className={`p-2 rounded-lg transition-colors ${
+                  activeView === 'dashboard'
+                    ? 'text-orange-600 bg-orange-50'
+                    : 'text-slate-600 hover:text-orange-600 hover:bg-orange-50'
+                }`}
+                title="Post Performance & Analytics Dashboard"
+                aria-label="Performance Dashboard"
+                aria-pressed={activeView === 'dashboard'}
+              >
+                <BarChart3 className="w-4.5 h-4.5" />
               </button>
             )}
 
