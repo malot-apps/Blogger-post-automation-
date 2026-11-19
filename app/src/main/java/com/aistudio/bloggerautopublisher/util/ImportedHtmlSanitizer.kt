@@ -80,7 +80,7 @@ object ImportedHtmlSanitizer {
     fun neutralizeTemplatePlaceholders(html: String): String {
         if (html.isBlank()) return ""
         return html.replace(
-            Regex("\\{\\{\\s*(TITLE|IMAGE_URL|THUMBNAIL_URL|CAPTION|PUBLISHED_DATE)\\s*\\}\\}", RegexOption.IGNORE_CASE),
+            Regex("\\{\\{\\s*(TITLE|IMAGE_URL|THUMBNAIL_URL|CAPTION|PUBLISHED_DATE|META_DESCRIPTION)\\s*\\}\\}", RegexOption.IGNORE_CASE),
             ""
         )
     }
@@ -393,7 +393,10 @@ object ImportedHtmlSanitizer {
             if (cleanSrc.isNullOrBlank() || isAdOrSmartLinkUrl(cleanSrc)) {
                 ""
             } else {
-                val alt = altAttrRx.find(attrs)?.let { it.groupValues[1].ifEmpty { it.groupValues[2] } }.orEmpty()
+                val alt = HtmlEntityCodec.decodePlainTextEntities(
+                    altAttrRx.find(attrs)?.let { it.groupValues[1].ifEmpty { it.groupValues[2] } }.orEmpty(),
+                    preserveNewlines = false
+                )
                 val srcset = srcsetAttrRx.find(attrs)?.let { it.groupValues[1].ifEmpty { it.groupValues[2] } }.orEmpty()
                 val w = widthAttrRx.find(attrs)?.let {
                     (it.groupValues[1].ifEmpty { it.groupValues[2].ifEmpty { it.groupValues[3] } }).toIntOrNull()
@@ -436,7 +439,7 @@ object ImportedHtmlSanitizer {
             .replace(Regex("\\n{3,}"), "\n\n")
             .trim()
 
-        cleaned = neutralizeTemplatePlaceholders(cleaned)
+        cleaned = HtmlEntityCodec.repairNonAsciiHtmlEntities(neutralizeTemplatePlaceholders(cleaned))
 
         for (rescued in rescuedImages) {
             if (seenImgSrcs.add(rescued.src)) {
@@ -444,10 +447,10 @@ object ImportedHtmlSanitizer {
             }
         }
 
-        val plainText = cleaned
-            .replace(Regex("<[^>]*>"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        val plainText = HtmlEntityCodec.decodePlainTextEntities(
+            cleaned.replace(Regex("<[^>]*>"), " "),
+            preserveNewlines = false
+        )
 
         return SanitizedImportedHtmlResult(
             html = cleaned,

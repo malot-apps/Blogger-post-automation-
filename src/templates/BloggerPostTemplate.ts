@@ -1,4 +1,8 @@
-import { escapeHtml } from '../lib/sanitizer';
+import {
+  decodeHtmlEntities,
+  escapeHtml,
+  repairNonAsciiHtmlEntities,
+} from '../lib/sanitizer';
 import {
   isDisallowedNonThumbnailFormat,
   selectMainThumbnailImageFromHtml,
@@ -1553,9 +1557,60 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
       }
     }
 
+    function decodeNonAsciiEntities(input) {
+      if (typeof input !== 'string' || input.indexOf('#') === -1) return input || '';
+      return input.replace(/&(?:amp;){0,3}(?:#(\d{1,7})|#x([0-9a-fA-F]{1,6}));/gi, function (m, dec, hex) {
+        const cp = dec ? parseInt(dec, 10) : parseInt(hex, 16);
+        if (!Number.isFinite(cp) || cp < 0x0100 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) || cp === 0x2028 || cp === 0x2029) {
+          return m;
+        }
+        return String.fromCodePoint(cp);
+      });
+    }
+
+    function setSafeText(el, text) {
+      if (!el) return;
+      el.textContent = decodeNonAsciiEntities(text);
+    }
+
+    function setSafeAttr(el, attrName, value) {
+      if (!el) return;
+      el.setAttribute(attrName, decodeNonAsciiEntities(value));
+    }
+
+    function repairBengaliEntitiesInUi() {
+      if (document.title && document.title.indexOf('#') !== -1) {
+        document.title = decodeNonAsciiEntities(document.title);
+      }
+      if (!document.body || !document.createTreeWalker || typeof NodeFilter === 'undefined') return;
+      try {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+        let node = walker.nextNode();
+        while (node) {
+          const parentTag = node.parentNode && node.parentNode.nodeName ? node.parentNode.nodeName.toUpperCase() : '';
+          if (parentTag !== 'SCRIPT' && parentTag !== 'STYLE' && parentTag !== 'CODE' && parentTag !== 'PRE') {
+            const val = node.nodeValue || '';
+            if (val.indexOf('#') !== -1) {
+              const decoded = decodeNonAsciiEntities(val);
+              if (decoded !== val) {
+                node.nodeValue = decoded;
+              }
+            }
+          }
+          node = walker.nextNode();
+        }
+        document.querySelectorAll('[aria-label]').forEach(function (el) {
+          const lbl = el.getAttribute('aria-label') || '';
+          if (lbl.indexOf('#') !== -1) {
+            setSafeAttr(el, 'aria-label', lbl);
+          }
+        });
+      } catch (_) {}
+    }
+
     function showLoadingState(messageText) {
       if (loadingMessage && messageText) {
-        loadingMessage.textContent = messageText;
+        setSafeText(loadingMessage, messageText);
       }
       if (playbackErrorScreen) playbackErrorScreen.style.display = 'none';
       if (playCenterGroup) playCenterGroup.classList.add('is-hidden');
@@ -1583,24 +1638,26 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
 
       if (playbackFailures >= 2) {
         if (errorTitle) {
-          errorTitle.textContent = 'দুঃখিত, বারবার চেষ্টা করেও ভিডিওটি চালু করা যায়নি';
+          setSafeText(errorTitle, 'দুঃখিত, বারবার চেষ্টা করেও ভিডিওটি চালু করা যায়নি');
         }
         if (errorSubtitle) {
-          errorSubtitle.textContent =
-            'অনুগ্রহ করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করুন অথবা কিছুক্ষণ পর পুনরায় চেষ্টা করুন।';
+          setSafeText(
+            errorSubtitle,
+            'অনুগ্রহ করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করুন অথবা কিছুক্ষণ পর পুনরায় চেষ্টা করুন।'
+          );
         }
         if (retryPlayBtn) {
-          retryPlayBtn.textContent = 'পুনরায় চেষ্টা করুন';
+          setSafeText(retryPlayBtn, 'পুনরায় চেষ্টা করুন');
         }
       } else {
         if (errorTitle) {
-          errorTitle.textContent = 'ভিডিওটি লোড হতে ব্যর্থ হয়েছে';
+          setSafeText(errorTitle, 'ভিডিওটি লোড হতে ব্যর্থ হয়েছে');
         }
         if (errorSubtitle) {
-          errorSubtitle.textContent = 'সংযোগে সাময়িক ত্রুটি দেখা দিয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
+          setSafeText(errorSubtitle, 'সংযোগে সাময়িক ত্রুটি দেখা দিয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
         }
         if (retryPlayBtn) {
-          retryPlayBtn.textContent = 'আবার চেষ্টা করুন';
+          setSafeText(retryPlayBtn, 'আবার চেষ্টা করুন');
         }
       }
 
@@ -1776,6 +1833,7 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
     }
 
     function init() {
+      repairBengaliEntitiesInUi();
       enforceJpgOnlyImages();
       initSmoothScrollIndicator();
       initAdGateSystem();
@@ -2007,7 +2065,7 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
         adGateNotice.className = 'ad-gate-notice';
         return;
       }
-      adGateNotice.textContent = message;
+      setSafeText(adGateNotice, message);
       adGateNotice.className = 'ad-gate-notice is-visible ' + (tone || 'is-info');
     }
 
@@ -2028,8 +2086,10 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
         setGateNotice('is-warning', reasonMessage);
       }
       if (adGateSafeContinueBtn) {
-        adGateSafeContinueBtn.textContent =
-          'নিরাপদভাবে ধাপ ' + toBengaliDigits(stepIndex + 1) + ' সম্পন্ন করুন';
+        setSafeText(
+          adGateSafeContinueBtn,
+          'নিরাপদভাবে ধাপ ' + toBengaliDigits(stepIndex + 1) + ' সম্পন্ন করুন'
+        );
         adGateSafeContinueBtn.style.display = 'inline-flex';
       }
     }
@@ -2038,8 +2098,10 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
       adGateState.fallbackTarget = { target: target, stepIndex: stepIndex };
       if (adGateFallbackLink && target && isValidDestinationUrl(target.url)) {
         adGateFallbackLink.setAttribute('href', target.url);
-        adGateFallbackLink.textContent =
-          'সরাসরি বিজ্ঞাপন খুলুন (ধাপ ' + toBengaliDigits(stepIndex + 1) + ')';
+        setSafeText(
+          adGateFallbackLink,
+          'সরাসরি বিজ্ঞাপন খুলুন (ধাপ ' + toBengaliDigits(stepIndex + 1) + ')'
+        );
         adGateFallbackLink.style.display = 'inline-flex';
       }
       setGateNotice(
@@ -2071,18 +2133,19 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
         } else {
           playIcon.classList.remove('is-just-unlocked');
         }
-        playIcon.setAttribute(
+        setSafeAttr(
+          playIcon,
           'aria-label',
           unlocked ? 'ভিডিও চালু করুন' : 'ভিডিও আনলক করতে ২টি বিজ্ঞাপন দেখুন'
         );
       }
       if (bnPlayHint) {
         if (unlocked) {
-          bnPlayHint.textContent = 'আনলক সম্পন্ন! ভিডিও চালু করতে উপরের প্লে বাটনে চাপ দিন';
+          setSafeText(bnPlayHint, 'আনলক সম্পন্ন! ভিডিও চালু করতে উপরের প্লে বাটনে চাপ দিন');
         } else if (doneCount === 1) {
-          bnPlayHint.textContent = 'বিজ্ঞাপন ১/২ সম্পন্ন — আর ১টি ধাপ বাকি';
+          setSafeText(bnPlayHint, 'বিজ্ঞাপন ১/২ সম্পন্ন — আর ১টি ধাপ বাকি');
         } else {
-          bnPlayHint.textContent = 'ভিডিও আনলক করতে নিচের ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন (০/২)';
+          setSafeText(bnPlayHint, 'ভিডিও আনলক করতে নিচের ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন (০/২)');
         }
       }
 
@@ -2100,47 +2163,57 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
 
       if (adGateStatusPill) {
         if (unlocked) {
-          adGateStatusPill.textContent = '🔓 আনলক সম্পন্ন';
+          setSafeText(adGateStatusPill, '🔓 আনলক সম্পন্ন');
         } else if (verifying) {
-          adGateStatusPill.textContent = '⏳ বিজ্ঞাপন যাচাই চলছে';
+          setSafeText(adGateStatusPill, '⏳ বিজ্ঞাপন যাচাই চলছে');
         } else {
-          adGateStatusPill.textContent = '🔒 ভিডিও লক করা আছে';
+          setSafeText(adGateStatusPill, '🔒 ভিডিও লক করা আছে');
         }
       }
 
       if (adGateStepCounter) {
-        adGateStepCounter.textContent =
-          toBengaliDigits(doneCount) + '/' + toBengaliDigits(AD_GATE_CONFIG.requiredSteps) + 'টি বিজ্ঞাপন সম্পন্ন';
+        setSafeText(
+          adGateStepCounter,
+          toBengaliDigits(doneCount) + '/' + toBengaliDigits(AD_GATE_CONFIG.requiredSteps) + 'টি বিজ্ঞাপন সম্পন্ন'
+        );
       }
 
       if (adGateTitle) {
         if (unlocked) {
-          adGateTitle.textContent = 'অভিনন্দন! ভিডিওটি এখন আনলক হয়েছে';
+          setSafeText(adGateTitle, 'অভিনন্দন! ভিডিওটি এখন আনলক হয়েছে');
         } else if (doneCount === 1) {
-          adGateTitle.textContent = 'বিজ্ঞাপন ১/২ সম্পন্ন — আনলক করতে আর ১টি ধাপ বাকি';
+          setSafeText(adGateTitle, 'বিজ্ঞাপন ১/২ সম্পন্ন — আনলক করতে আর ১টি ধাপ বাকি');
         } else {
-          adGateTitle.textContent = 'ভিডিওটি দেখতে ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন';
+          setSafeText(adGateTitle, 'ভিডিওটি দেখতে ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন');
         }
       }
 
       if (adGateSubtitle) {
         if (unlocked) {
-          adGateSubtitle.textContent =
-            '২/২টি বিজ্ঞাপন সঠিকভাবে সম্পন্ন হয়েছে। এখন প্লে বাটনে চাপ দিয়ে সম্পূর্ণ ভিডিও উপভোগ করুন।';
+          setSafeText(
+            adGateSubtitle,
+            '২/২টি বিজ্ঞাপন সঠিকভাবে সম্পন্ন হয়েছে। এখন প্লে বাটনে চাপ দিয়ে সম্পূর্ণ ভিডিও উপভোগ করুন।'
+          );
         } else if (verifying && adGateState.activeVerification) {
           const secLeft = adGateState.activeVerification.remainingSec;
-          adGateSubtitle.textContent =
+          setSafeText(
+            adGateSubtitle,
             'বিজ্ঞাপন ধাপ ' +
-            toBengaliDigits(doneCount + 1) +
-            ' যাচাই হচ্ছে — আনলকের দিকে এগোতে আর ' +
-            toBengaliDigits(secLeft) +
-            ' সেকেন্ড অপেক্ষা করুন।';
+              toBengaliDigits(doneCount + 1) +
+              ' যাচাই হচ্ছে — আনলকের দিকে এগোতে আর ' +
+              toBengaliDigits(secLeft) +
+              ' সেকেন্ড অপেক্ষা করুন।'
+          );
         } else if (doneCount === 1) {
-          adGateSubtitle.textContent =
-            '১ম বিজ্ঞাপন সফলভাবে যাচাই হয়েছে। প্লে বাটনটি আনলক করতে নিচের ২য় বিজ্ঞাপনটি দেখুন।';
+          setSafeText(
+            adGateSubtitle,
+            '১ম বিজ্ঞাপন সফলভাবে যাচাই হয়েছে। প্লে বাটনটি আনলক করতে নিচের ২য় বিজ্ঞাপনটি দেখুন।'
+          );
         } else {
-          adGateSubtitle.textContent =
-            'প্রতিটি বিজ্ঞাপন দেখার পর নির্ধারিত কয়েক সেকেন্ড অপেক্ষা করলেই ভিডিওটি স্বয়ংক্রিয়ভাবে আনলক হবে।';
+          setSafeText(
+            adGateSubtitle,
+            'প্রতিটি বিজ্ঞাপন দেখার পর নির্ধারিত কয়েক সেকেন্ড অপেক্ষা করলেই ভিডিওটি স্বয়ংক্রিয়ভাবে আনলক হবে।'
+          );
         }
       }
 
@@ -2150,13 +2223,16 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
         const s1Active = !s1Done && verifying;
         adGateStep1.classList.toggle('is-done', s1Done);
         adGateStep1.classList.toggle('is-active', s1Active);
-        if (adGateStep1Icon) adGateStep1Icon.textContent = s1Done ? '✓' : '১';
+        if (adGateStep1Icon) setSafeText(adGateStep1Icon, s1Done ? '✓' : '১');
         if (adGateStep1State) {
-          adGateStep1State.textContent = s1Done
-            ? 'সম্পন্ন হয়েছে ✓'
-            : s1Active
-              ? 'যাচাই চলছে...'
-              : 'প্রস্তুত (১ম বিজ্ঞাপন দেখুন)';
+          setSafeText(
+            adGateStep1State,
+            s1Done
+              ? 'সম্পন্ন হয়েছে ✓'
+              : s1Active
+                ? 'যাচাই চলছে...'
+                : 'প্রস্তুত (১ম বিজ্ঞাপন দেখুন)'
+          );
         }
       }
 
@@ -2166,15 +2242,18 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
         const s2Active = doneCount === 1 && verifying;
         adGateStep2.classList.toggle('is-done', s2Done);
         adGateStep2.classList.toggle('is-active', s2Active);
-        if (adGateStep2Icon) adGateStep2Icon.textContent = s2Done ? '✓' : '২';
+        if (adGateStep2Icon) setSafeText(adGateStep2Icon, s2Done ? '✓' : '২');
         if (adGateStep2State) {
-          adGateStep2State.textContent = s2Done
-            ? 'সম্পন্ন হয়েছে ✓'
-            : s2Active
-              ? 'যাচাই চলছে...'
-              : doneCount === 1
-                ? 'প্রস্তুত (২য় বিজ্ঞাপন দেখুন)'
-                : 'ধাপ ১-এর পর প্রস্তুত হবে';
+          setSafeText(
+            adGateStep2State,
+            s2Done
+              ? 'সম্পন্ন হয়েছে ✓'
+              : s2Active
+                ? 'যাচাই চলছে...'
+                : doneCount === 1
+                  ? 'প্রস্তুত (২য় বিজ্ঞাপন দেখুন)'
+                  : 'ধাপ ১-এর পর প্রস্তুত হবে'
+          );
         }
       }
 
@@ -2186,21 +2265,23 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
       // Primary Action Button
       if (adGateActionBtn) {
         if (unlocked) {
-          adGateActionBtn.textContent = 'এখনই ভিডিও চালু করুন ▶';
+          setSafeText(adGateActionBtn, 'এখনই ভিডিও চালু করুন ▶');
           adGateActionBtn.classList.add('ad-gate-btn--unlock-play');
           adGateActionBtn.disabled = false;
         } else if (verifying && adGateState.activeVerification) {
           adGateActionBtn.classList.remove('ad-gate-btn--unlock-play');
-          adGateActionBtn.textContent =
-            'যাচাই চলছে (' + toBengaliDigits(adGateState.activeVerification.remainingSec) + ' সেকেন্ড বাকি)...';
+          setSafeText(
+            adGateActionBtn,
+            'যাচাই চলছে (' + toBengaliDigits(adGateState.activeVerification.remainingSec) + ' সেকেন্ড বাকি)...'
+          );
           adGateActionBtn.disabled = true;
         } else {
           adGateActionBtn.classList.remove('ad-gate-btn--unlock-play');
           adGateActionBtn.disabled = false;
           if (doneCount === 1) {
-            adGateActionBtn.textContent = '২য় বিজ্ঞাপন দেখুন (২/২)';
+            setSafeText(adGateActionBtn, '২য় বিজ্ঞাপন দেখুন (২/২)');
           } else {
-            adGateActionBtn.textContent = '১ম বিজ্ঞাপন দেখুন (১/২)';
+            setSafeText(adGateActionBtn, '১ম বিজ্ঞাপন দেখুন (১/২)');
           }
         }
       }
@@ -2372,7 +2453,7 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
         }
 
         if (adGateTimerNumber) {
-          adGateTimerNumber.textContent = toBengaliDigits(remainingSec);
+          setSafeText(adGateTimerNumber, toBengaliDigits(remainingSec));
         }
         if (adGateTimerRing) {
           const ratio = Math.min(1, elapsedMs / totalMs);
@@ -2380,13 +2461,18 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
           adGateTimerRing.style.strokeDashoffset = String(offset.toFixed(2));
         }
         if (adGateTimerTitle) {
-          adGateTimerTitle.textContent =
-            'বিজ্ঞাপন ধাপ ' + toBengaliDigits(stepIndex + 1) + ' যাচাই হচ্ছে (' + toBengaliDigits(remainingSec) + ' সেকেন্ড)';
+          setSafeText(
+            adGateTimerTitle,
+            'বিজ্ঞাপন ধাপ ' + toBengaliDigits(stepIndex + 1) + ' যাচাই হচ্ছে (' + toBengaliDigits(remainingSec) + ' সেকেন্ড)'
+          );
         }
         if (adGateTimerSub) {
-          adGateTimerSub.textContent = remainingSec > 0
-            ? 'বিজ্ঞাপনটি চালু রাখুন — আর মাত্র ' + toBengaliDigits(remainingSec) + ' সেকেন্ড বাকি'
-            : 'যাচাই সম্পন্ন হয়েছে!';
+          setSafeText(
+            adGateTimerSub,
+            remainingSec > 0
+              ? 'বিজ্ঞাপনটি চালু রাখুন — আর মাত্র ' + toBengaliDigits(remainingSec) + ' সেকেন্ড বাকি'
+              : 'যাচাই সম্পন্ন হয়েছে!'
+          );
         }
 
         updateGateUi();
@@ -2937,7 +3023,6 @@ export const DEFAULT_MASTER_TEMPLATE = String.raw`<!DOCTYPE html>
     initLazyAds();
   </script>
 </body>
-
 </html>`;
 
 function normalizeComparableUrl(url: string): string {
@@ -2999,7 +3084,8 @@ export function ensureMainImageFirstInPostHtml(
     }
   }
 
-  const safeAlt = escapeHtml((altText || '').trim());
+  const normalizedAlt = decodeHtmlEntities((altText || '').trim(), { preserveNewlines: false });
+  const safeAlt = escapeHtml(normalizedAlt);
   const heroBlock = `<div class="separator" style="clear: both;"><a href="${cleanUrl}" style="display: block; padding: 1em 0px; text-align: center;"><img alt="${safeAlt}" border="0" data-original-height="1350" data-original-width="1080" height="320" src="${cleanUrl}" /></a></div>`;
 
   if (bodyMatch && bodyMatch.index !== undefined) {
@@ -3011,7 +3097,7 @@ export function ensureMainImageFirstInPostHtml(
 
 export function normalizeMetaDescription(raw?: string | null): string {
   if (!raw) return '';
-  return raw
+  return decodeHtmlEntities(raw, { preserveNewlines: false })
     .replace(/\{\{\s*(TITLE|IMAGE_URL|THUMBNAIL_URL|CAPTION|PUBLISHED_DATE|META_DESCRIPTION)\s*\}\}/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -3080,10 +3166,11 @@ export function renderBloggerPostTemplate(
   data?: BloggerTemplateVariables,
   adsSettings?: AdsSettings | null
 ): string {
-  const safeTemplate =
+  const safeTemplate = repairNonAsciiHtmlEntities(
     templateString && templateString.trim().length > 0
       ? templateString
-      : DEFAULT_MASTER_TEMPLATE;
+      : DEFAULT_MASTER_TEMPLATE
+  );
 
   if (!data) {
     const cleaned = applyMetaDescriptionToTemplate(safeTemplate, undefined);
@@ -3092,8 +3179,10 @@ export function renderBloggerPostTemplate(
       : cleaned;
   }
 
-  const escapedTitle = escapeHtml(data.title || '');
-  const formattedCaption = escapeHtml(data.caption || '').replace(/\n/g, '<br/>');
+  const normalizedTitle = decodeHtmlEntities(data.title || '', { preserveNewlines: false });
+  const normalizedCaption = decodeHtmlEntities(data.caption || '', { preserveNewlines: true });
+  const escapedTitle = escapeHtml(normalizedTitle);
+  const formattedCaption = escapeHtml(normalizedCaption).replace(/\n/g, '<br/>');
   const rawMainUrl = sanitizeTemplateUrlValue(data.imageUrl || data.thumbnailUrl);
   const rawThumbFallback = sanitizeTemplateUrlValue(data.thumbnailUrl);
   const safeImageUrl =
@@ -3119,7 +3208,7 @@ export function renderBloggerPostTemplate(
 
   const rendered = applyMetaDescriptionToTemplate(renderedWithVars, data.metaDescription);
   const secured = ensureMasterAdConfiguration(rendered, DEFAULT_MASTER_TEMPLATE, adsSettings);
-  return ensureMainImageFirstInPostHtml(secured, safeImageUrl, data.title);
+  return ensureMainImageFirstInPostHtml(secured, safeImageUrl, normalizedTitle);
 }
 
 export interface ImportedTemplateVariables {
@@ -3223,20 +3312,23 @@ export function renderImportedPostTemplate(
   masterAdSourceTemplate?: string | null,
   adsSettings?: AdsSettings | null
 ): string {
-  const authoritativeMaster =
+  const authoritativeMaster = repairNonAsciiHtmlEntities(
     masterAdSourceTemplate && masterAdSourceTemplate.trim().length > 0
       ? masterAdSourceTemplate
-      : DEFAULT_MASTER_TEMPLATE;
+      : DEFAULT_MASTER_TEMPLATE
+  );
 
-  const safeTemplate =
+  const safeTemplate = repairNonAsciiHtmlEntities(
     templateString && templateString.trim().length > 0
       ? deduplicateAdScriptsAndContainers(templateString)
-      : authoritativeMaster;
+      : authoritativeMaster
+  );
 
   if (!data) {
+    const cleaned = applyMetaDescriptionToTemplate(safeTemplate, undefined);
     return adsSettings
-      ? ensureMasterAdConfiguration(safeTemplate, authoritativeMaster, adsSettings)
-      : safeTemplate;
+      ? ensureMasterAdConfiguration(cleaned, authoritativeMaster, adsSettings)
+      : cleaned;
   }
 
   // Always sanitize imported HTML strictly before merging so imported content
@@ -3245,13 +3337,14 @@ export function renderImportedPostTemplate(
     baseUrl: data.sourceUrl,
   });
 
-  const escapedTitle = escapeHtml(data.title || '');
-  const plainSummary = cleanedArticleHtml
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const normalizedTitle = decodeHtmlEntities(data.title || '', { preserveNewlines: false });
+  const escapedTitle = escapeHtml(normalizedTitle);
+  const plainSummary = decodeHtmlEntities(
+    cleanedArticleHtml.replace(/<[^>]*>/g, ' '),
+    { preserveNewlines: false }
+  );
   const shortSummary = escapeHtml(
-    plainSummary.length > 110 ? `${plainSummary.slice(0, 107).trim()}...` : plainSummary || data.title || ''
+    plainSummary.length > 110 ? `${plainSummary.slice(0, 107).trim()}...` : plainSummary || normalizedTitle
   );
 
   const rawMainInput = sanitizeTemplateUrlValue(data.imageUrl);
@@ -3326,6 +3419,9 @@ export function renderImportedPostTemplate(
   }
 
   // 3. Handle hero {{IMAGE_URL}} / {{THUMBNAIL_URL}} and #videoThumbnail cleanly
+  const normalizedFirstAlt = data.firstImageAlt
+    ? decodeHtmlEntities(data.firstImageAlt, { preserveNewlines: false })
+    : '';
   if (!safeImageUrl) {
     output = output.replace(
       /<a\b[^>]*href=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["'][^>]*>\s*<img\b[^>]*src=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["'][^>]*>\s*<\/a>/gi,
@@ -3350,8 +3446,8 @@ export function renderImportedPostTemplate(
       /<img\b([^>]*src=["']\{\{(?:IMAGE_URL|THUMBNAIL_URL)\}\}["'][^>]*)>/gi,
       (_m, attrs: string) => {
         let updatedAttrs = attrs;
-        if (data.firstImageAlt && /\balt=["']\s*["']/i.test(updatedAttrs)) {
-          updatedAttrs = updatedAttrs.replace(/\balt=["']\s*["']/i, () => `alt="${escapeHtml(data.firstImageAlt!)}"`);
+        if (normalizedFirstAlt && /\balt=["']\s*["']/i.test(updatedAttrs)) {
+          updatedAttrs = updatedAttrs.replace(/\balt=["']\s*["']/i, () => `alt="${escapeHtml(normalizedFirstAlt)}"`);
         }
         if (data.firstImageSrcset && !/\bsrcset=/i.test(updatedAttrs)) {
           updatedAttrs = `${updatedAttrs} srcset="${escapeHtml(data.firstImageSrcset)}"`;
@@ -3373,7 +3469,7 @@ export function renderImportedPostTemplate(
   // 5. Apply ONLY configured & enabled Ads Settings and deduplicate
   const secured = ensureMasterAdConfiguration(rendered, authoritativeMaster, adsSettings);
 
-  return ensureMainImageFirstInPostHtml(secured, safeImageUrl, data.firstImageAlt || data.title);
+  return ensureMainImageFirstInPostHtml(secured, safeImageUrl, normalizedFirstAlt || normalizedTitle);
 }
 
 export const renderTemplate = renderBloggerPostTemplate;

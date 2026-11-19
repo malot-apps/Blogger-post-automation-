@@ -14,6 +14,10 @@ import {
   stripSchemaOrgJsonLdFromText,
 } from '../lib/importedHtmlCleaner';
 import { isUnwantedUiOrAdImage } from '../lib/mainImageSelector';
+import {
+  decodeHtmlEntities as decodePlainHtmlEntities,
+  repairNonAsciiHtmlEntities,
+} from '../lib/sanitizer';
 
 export interface SanitizedArticleImage {
   src: string;
@@ -185,12 +189,10 @@ const GENUINE_CDN_HINTS = [
 ];
 
 /**
- * Decodes common HTML entities cleanly into readable UTF-8 text.
+ * Decodes HTML entities cleanly into readable UTF-8 text (including single- and double-escaped numeric entities).
  */
 export function decodeHtmlEntities(input: string): string {
-  if (!input) return '';
-  const $ = cheerio.load(`<span>${input}</span>`);
-  return $('span').text().replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  return decodePlainHtmlEntities(input, { preserveNewlines: false });
 }
 
 function isPlaceholderImageSrc(src: string): boolean {
@@ -812,8 +814,8 @@ export function sanitizeImportedHtml(
       return;
     }
 
-    const altText = ($img.attr('alt') || '').trim();
-    const titleText = ($img.attr('title') || '').trim();
+    const altText = decodePlainHtmlEntities($img.attr('alt') || '', { preserveNewlines: false });
+    const titleText = decodePlainHtmlEntities($img.attr('title') || '', { preserveNewlines: false });
 
     // Remove unwanted PNG icons, play buttons, logos, social badges, tracking pixels, and ad banner images
     // while preserving genuine large article PNGs (infographics, charts, screenshots)
@@ -1025,19 +1027,17 @@ export function sanitizeImportedHtml(
     }
   }
 
-  // 11. Serialize, collapse excessive <br> runs/blank lines, and neutralize any {{PLACEHOLDER}} tokens
-  let cleanedHtml = neutralizeTemplatePlaceholders(
-    ($root.html() || '')
-      .replace(/(?:<br\s*\/?>\s*){3,}/gi, '<br /><br />')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
+  // 11. Serialize, collapse excessive <br> runs/blank lines, repair non-ASCII entities, and neutralize any {{PLACEHOLDER}} tokens
+  const cleanedHtml = repairNonAsciiHtmlEntities(
+    neutralizeTemplatePlaceholders(
+      ($root.html() || '')
+        .replace(/(?:<br\s*\/?>\s*){3,}/gi, '<br /><br />')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+    )
   );
 
-  const plainText = $root
-    .text()
-    .replace(/\u00a0/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const plainText = decodePlainHtmlEntities($root.text(), { preserveNewlines: false });
 
   return {
     html: cleanedHtml,

@@ -63,6 +63,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.aistudio.bloggerautopublisher.model.AdsSettings
 import com.aistudio.bloggerautopublisher.template.BloggerTemplateEngine
 import com.aistudio.bloggerautopublisher.ui.theme.*
+import com.aistudio.bloggerautopublisher.util.HtmlEntityCodec
 import com.aistudio.bloggerautopublisher.util.TitleGenerator
 
 @Composable
@@ -84,7 +85,11 @@ fun PostPreviewDialog(
     var selectedTab by remember { mutableStateOf(0) } // 0 = Visual, 1 = HTML
     var deviceMode by remember { mutableStateOf("mobile") } // mobile or desktop
 
-    val effectiveTitle = if (title.isNotBlank()) title else TitleGenerator.generateTitleFromCaption(caption)
+    val effectiveTitle = if (title.isNotBlank()) {
+        HtmlEntityCodec.decodePlainTextEntities(title, preserveNewlines = false)
+    } else {
+        TitleGenerator.generateTitleFromCaption(caption)
+    }
     val renderedHtml = remember(effectiveTitle, imageUrl, caption, template, adsSettings) {
         BloggerTemplateEngine.renderTemplate(
             template = template,
@@ -221,11 +226,12 @@ fun PostPreviewDialog(
                                 WebView(ctx).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
-                                    loadDataWithBaseURL(null, renderedHtml, "text/html", "UTF-8", null)
+                                    settings.defaultTextEncodingName = "UTF-8"
+                                    loadDataWithBaseURL(null, renderedHtml, "text/html; charset=utf-8", "UTF-8", null)
                                 }
                             },
                             update = { webView ->
-                                webView.loadDataWithBaseURL(null, renderedHtml, "text/html", "UTF-8", null)
+                                webView.loadDataWithBaseURL(null, renderedHtml, "text/html; charset=utf-8", "UTF-8", null)
                             },
                             modifier = Modifier
                                 .fillMaxSize()

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -68,6 +69,7 @@ import com.aistudio.bloggerautopublisher.model.AdsSettings
 import com.aistudio.bloggerautopublisher.model.BannerAdConfig
 import com.aistudio.bloggerautopublisher.template.BloggerTemplateEngine
 import com.aistudio.bloggerautopublisher.ui.theme.*
+import com.aistudio.bloggerautopublisher.util.HtmlEntityCodec
 
 @Composable
 fun TemplateSettingsDialog(
@@ -252,10 +254,12 @@ fun TemplateSettingsDialog(
                                 Spacer(modifier = Modifier.height(6.dp))
 
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    for (tag in listOf("{{IMAGE_URL}}", "{{CAPTION}}", "{{TITLE}}", "{{PUBLISHED_DATE}}")) {
+                                    for (tag in listOf("{{IMAGE_URL}}", "{{CAPTION}}", "{{TITLE}}", "{{META_DESCRIPTION}}", "{{PUBLISHED_DATE}}")) {
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(6.dp))
@@ -622,7 +626,7 @@ fun TemplateSettingsDialog(
                                 selectedTabIndex = 1
                                 return@Button
                             }
-                            onSaveTemplate(templateText)
+                            onSaveTemplate(HtmlEntityCodec.repairNonAsciiHtmlEntities(templateText))
                             onSaveAdsSettings(buildAdsDraft())
                             onSaveGeminiApiKey(apiKeyText)
                             onClose()

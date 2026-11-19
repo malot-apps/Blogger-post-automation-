@@ -1,5 +1,6 @@
 import { applyAdsSettingsToHtml, DEFAULT_ADS_SETTINGS, type AdsSettings } from './adsSettings';
 import { isUnwantedUiOrAdImage } from './mainImageSelector';
+import { repairNonAsciiHtmlEntities } from './sanitizer';
 
 /**
  * Shared, isomorphic utilities for:
@@ -943,7 +944,7 @@ export function sanitizeImportedArticleFragment(
           }
         });
 
-        return neutralizeTemplatePlaceholders(root.innerHTML.trim());
+        return repairNonAsciiHtmlEntities(neutralizeTemplatePlaceholders(root.innerHTML.trim()));
       }
     } catch {
       // fallback to deterministic non-DOM cleaner below
@@ -1036,7 +1037,7 @@ export function sanitizeImportedArticleFragment(
   // Remove empty <p> / <div> / <figure> wrappers left after JSON-LD/icon cleanup
   cleaned = cleaned.replace(/<(p|div|span|figure)\b[^>]*>\s*(?:&nbsp;|\s)*<\/\1>/gi, '');
 
-  return neutralizeTemplatePlaceholders(cleaned.trim());
+  return repairNonAsciiHtmlEntities(neutralizeTemplatePlaceholders(cleaned.trim()));
 }
 
 /**
@@ -1106,7 +1107,7 @@ export function deduplicateAdScriptsAndContainers(html: string): string {
     }
   );
 
-  return output.replace(/\n{3,}/g, '\n\n').trim();
+  return repairNonAsciiHtmlEntities(output.replace(/\n{3,}/g, '\n\n').trim());
 }
 
 export interface MasterAdSections {

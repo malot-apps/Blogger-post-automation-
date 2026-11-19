@@ -11,6 +11,7 @@ import com.aistudio.bloggerautopublisher.model.CompositionStyle
 import com.aistudio.bloggerautopublisher.model.PublishedPost
 import com.aistudio.bloggerautopublisher.repository.BloggerRepository
 import com.aistudio.bloggerautopublisher.template.BloggerTemplateEngine
+import com.aistudio.bloggerautopublisher.util.HtmlEntityCodec
 import com.aistudio.bloggerautopublisher.util.ImageOptimizer
 import com.aistudio.bloggerautopublisher.util.MainImageSelector
 import com.aistudio.bloggerautopublisher.util.TitleGenerator
@@ -501,10 +502,14 @@ class BloggerViewModel(
 
     fun publishPost() {
         val state = _uiState.value
+        val normalizedCaption = HtmlEntityCodec.decodePlainTextEntities(
+            state.caption,
+            preserveNewlines = true
+        )
         val effectiveTitle = if (state.title.isNotBlank()) {
-            state.title.trim()
+            HtmlEntityCodec.decodePlainTextEntities(state.title, preserveNewlines = false)
         } else {
-            TitleGenerator.generateTitleFromCaption(state.caption)
+            TitleGenerator.generateTitleFromCaption(normalizedCaption)
         }
         val labelsList = state.labels.split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
@@ -592,7 +597,7 @@ class BloggerViewModel(
                     title = effectiveTitle,
                     imageUrl = verifiedImageUrl,
                     thumbnailUrl = verifiedImageUrl,
-                    caption = state.caption.trim(),
+                    caption = normalizedCaption,
                     adsSettings = state.adsSettings
                 )
 
@@ -609,7 +614,7 @@ class BloggerViewModel(
                     labels = labelsList,
                     imageUrl = verifiedImageUrl,
                     thumbnailUrl = verifiedImageUrl,
-                    caption = state.caption.trim()
+                    caption = normalizedCaption
                 )
 
                 repository.addPublishedPost(published)

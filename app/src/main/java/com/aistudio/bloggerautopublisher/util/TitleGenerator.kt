@@ -7,7 +7,10 @@ import java.util.Locale
 object TitleGenerator {
 
     fun generateTitleFromCaption(caption: String): String {
-        val clean = caption.replace(Regex("<[^>]*>"), "").trim()
+        val clean = HtmlEntityCodec.decodePlainTextEntities(
+            caption.replace(Regex("<[^>]*>"), ""),
+            preserveNewlines = true
+        )
         if (clean.isBlank()) {
             val today = SimpleDateFormat("MMM d, yyyy", Locale.US).format(Date())
             return "Photo Post - $today"

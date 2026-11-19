@@ -16,6 +16,7 @@ import {
   normalizeImageMimeType,
 } from '@/src/lib/mainImageSelector';
 import { sanitizeAdsSettings, isLegacyDefaultTemplate } from '@/src/lib/adsSettings';
+import { decodeHtmlEntities as decodePlainEntities } from '@/src/lib/sanitizer';
 
 function inferMimeAndExtFromDataUrl(dataUrl: string): { mimeType: string; ext: string } {
   const match = dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,/i);
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
 
     const customMetaDescription =
       typeof metaDescription === 'string' && metaDescription.trim().length > 0
-        ? metaDescription.trim()
+        ? decodePlainEntities(metaDescription, { preserveNewlines: false }) || undefined
         : undefined;
 
     const validatedAdsSettings = adsSettings ? sanitizeAdsSettings(adsSettings) : undefined;
@@ -364,17 +365,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Determine final title
-    const finalTitle = (title && typeof title === 'string' && title.trim().length > 0)
-      ? title.trim()
-      : generateTitleFromCaption(caption);
+    // Normalize plain text inputs once so Blogger titles and rendered HTML never contain literal &#...; entities
+    const normalizedCaption = decodePlainEntities(caption, { preserveNewlines: true });
+    const normalizedTitleInput =
+      typeof title === 'string' && title.trim().length > 0
+        ? decodePlainEntities(title, { preserveNewlines: false })
+        : '';
+    const finalTitle = normalizedTitleInput || generateTitleFromCaption(normalizedCaption);
 
     // Step 6: Render /templates/blogger-post-template.html using Main Post Image ({{IMAGE_URL}} & {{THUMBNAIL_URL}})
     const postHtml = renderTemplate(effectiveTemplateInput, {
       title: finalTitle,
       imageUrl: verifiedMainImageUrl,
       thumbnailUrl: verifiedMainImageUrl,
-      caption: caption.trim(),
+      caption: normalizedCaption,
       metaDescription: customMetaDescription,
     }, validatedAdsSettings);
 

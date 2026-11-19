@@ -6,6 +6,7 @@ import com.aistudio.bloggerautopublisher.model.AdsSettings
 import com.aistudio.bloggerautopublisher.model.PublishedPost
 import com.aistudio.bloggerautopublisher.model.UserProfile
 import com.aistudio.bloggerautopublisher.template.BloggerTemplateEngine
+import com.aistudio.bloggerautopublisher.util.HtmlEntityCodec
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +35,17 @@ class BloggerRepository(context: Context) {
     private fun isLegacyDefaultTemplate(template: String): Boolean {
         val trimmed = template.trim()
         if (trimmed.isEmpty()) return false
+        if (trimmed.contains("adGatePanel") && trimmed.contains("initAdGateSystem")) {
+            return false
+        }
+        val isPriorUnmodifiedMasterDefault =
+            trimmed.contains("bn-player-heading") &&
+                trimmed.contains("BUTTON_CLICK_CONFIG") &&
+                trimmed.contains("initLazyAds") &&
+                trimmed.contains("36d19f913897a5c30f86205584612f58") &&
+                trimmed.contains("https://cheflobesofficer.com/b1b9djat?key=a45917b862f040650d5da9b0f6ceac52")
+        if (isPriorUnmodifiedMasterDefault) return true
+
         val hasNewMarkers = trimmed.contains("bn-player-heading") ||
             trimmed.contains("BUTTON_CLICK_CONFIG") ||
             trimmed.contains("initLazyAds")
@@ -63,7 +75,19 @@ class BloggerRepository(context: Context) {
         val upgraded = saved
             .replace("""id="videoThumbnail" src="{{THUMBNAIL_URL}}"""", """id="videoThumbnail" src="{{IMAGE_URL}}"""")
             .replace("""CUSTOM_THUMBNAIL_URL = "{{THUMBNAIL_URL}}";""", """CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";""")
-        val migrated = BloggerTemplateEngine.deduplicateAdScriptsAndContainers(upgraded)
+        var migrated = HtmlEntityCodec.repairNonAsciiHtmlEntities(
+            BloggerTemplateEngine.deduplicateAdScriptsAndContainers(upgraded)
+        )
+        if (
+            migrated.contains("<title>{{TITLE}}</title>") &&
+            !migrated.contains("{{META_DESCRIPTION}}") &&
+            migrated.contains("bn-player-heading")
+        ) {
+            migrated = Regex("<title>\\{\\{TITLE\\}\\}</title>", RegexOption.IGNORE_CASE).replaceFirst(
+                migrated,
+                Regex.escapeReplacement("<title>{{TITLE}}</title>\n  <meta name=\"description\" content=\"{{META_DESCRIPTION}}\" />")
+            )
+        }
         if (migrated != saved) {
             prefs.edit().putString("custom_template", migrated).apply()
         }
@@ -141,7 +165,9 @@ class BloggerRepository(context: Context) {
     }
 
     fun saveTemplate(newTemplate: String) {
-        val cleaned = BloggerTemplateEngine.deduplicateAdScriptsAndContainers(newTemplate)
+        val cleaned = HtmlEntityCodec.repairNonAsciiHtmlEntities(
+            BloggerTemplateEngine.deduplicateAdScriptsAndContainers(newTemplate)
+        )
         prefs.edit().putString("custom_template", cleaned).apply()
         _template.value = cleaned
     }

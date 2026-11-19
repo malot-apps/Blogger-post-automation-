@@ -27,6 +27,7 @@ import {
   saveAdsSettings,
 } from '@/src/lib/adsSettings';
 import { generateTitleFromCaption } from '@/src/lib/titleGenerator';
+import { repairNonAsciiHtmlEntities } from '@/src/lib/sanitizer';
 import type { ImageProcessingResult } from '@/src/lib/imageUtils';
 
 import { Header } from '@/components/Header';
@@ -83,10 +84,12 @@ export default function Home() {
           }
           return DEFAULT_MASTER_TEMPLATE;
         }
-        let migrated = deduplicateAdScriptsAndContainers(
-          saved
-            .replace(/id="videoThumbnail" src="\{\{THUMBNAIL_URL\}\}"/g, 'id="videoThumbnail" src="{{IMAGE_URL}}"')
-            .replace(/CUSTOM_THUMBNAIL_URL = "\{\{THUMBNAIL_URL\}\}";/g, 'CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";')
+        let migrated = repairNonAsciiHtmlEntities(
+          deduplicateAdScriptsAndContainers(
+            saved
+              .replace(/id="videoThumbnail" src="\{\{THUMBNAIL_URL\}\}"/g, 'id="videoThumbnail" src="{{IMAGE_URL}}"')
+              .replace(/CUSTOM_THUMBNAIL_URL = "\{\{THUMBNAIL_URL\}\}";/g, 'CUSTOM_THUMBNAIL_URL = "{{IMAGE_URL}}";')
+          )
         );
         if (
           migrated.includes('<title>{{TITLE}}</title>') &&
@@ -351,7 +354,7 @@ export default function Home() {
 
   // Save custom template handler
   const handleSaveTemplate = (newTemplate: string) => {
-    const cleaned = deduplicateAdScriptsAndContainers(newTemplate);
+    const cleaned = repairNonAsciiHtmlEntities(deduplicateAdScriptsAndContainers(newTemplate));
     setCustomTemplate(cleaned);
     try {
       localStorage.setItem(STORAGE_KEY_TEMPLATE, cleaned);

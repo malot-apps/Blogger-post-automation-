@@ -3,6 +3,7 @@ package com.aistudio.bloggerautopublisher.api
 import com.aistudio.bloggerautopublisher.model.BloggerBlog
 import com.aistudio.bloggerautopublisher.model.PublishedPost
 import com.aistudio.bloggerautopublisher.model.UserProfile
+import com.aistudio.bloggerautopublisher.util.HtmlEntityCodec
 import com.aistudio.bloggerautopublisher.util.MainImageSelector
 import com.aistudio.bloggerautopublisher.util.ThumbnailCandidate
 import com.aistudio.bloggerautopublisher.util.ThumbnailCandidateRole
@@ -366,7 +367,7 @@ object BloggerApiService {
         val request = Request.Builder()
             .url(apiUrl)
             .header("Authorization", "Bearer $accessToken")
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json; charset=utf-8")
             .header("Accept", "application/json")
             .post(payload.toString().toRequestBody(JSON_MEDIA))
             .build()
@@ -533,7 +534,7 @@ object BloggerApiService {
         val request = Request.Builder()
             .url(url)
             .header("Authorization", "Bearer $accessToken")
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json; charset=utf-8")
             .post(payload.toString().toRequestBody(JSON_MEDIA))
             .build()
 
@@ -550,7 +551,13 @@ object BloggerApiService {
                 val labelsList = mutableListOf<String>()
                 if (labelsArr != null) {
                     for (i in 0 until labelsArr.length()) {
-                        labelsList.add(labelsArr.getString(i))
+                        val decodedLabel = HtmlEntityCodec.decodePlainTextEntities(
+                            labelsArr.getString(i),
+                            preserveNewlines = false
+                        )
+                        if (decodedLabel.isNotEmpty()) {
+                            labelsList.add(decodedLabel)
+                        }
                     }
                 }
 
@@ -572,10 +579,15 @@ object BloggerApiService {
                     ?: imageUrl?.takeUnless { MainImageSelector.isDisallowedNonThumbnailFormat(it) }
                     ?: thumbnailUrl?.takeUnless { MainImageSelector.isDisallowedNonThumbnailFormat(it) }
 
+                val decodedTitle = HtmlEntityCodec.decodePlainTextEntities(
+                    json.optString("title", title),
+                    preserveNewlines = false
+                ).ifEmpty { title }
+
                 PublishedPost(
                     id = json.getString("id"),
                     blogId = blogId,
-                    title = json.optString("title", title),
+                    title = decodedTitle,
                     caption = caption,
                     url = json.optString("url", "https://blogger.com"),
                     thumbnailUrl = resolvedMainImageUrl,

@@ -199,7 +199,7 @@ export async function createAndPublishBloggerPost(
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json; charset=utf-8',
       Accept: 'application/json',
     },
     body: JSON.stringify(payload),
@@ -594,7 +594,7 @@ export async function importBloggerPostsFromSource({
               url: item.url,
               published: item.published,
               updated: item.updated,
-              labels: item.labels || [],
+              labels: (item.labels || []).map((l) => decodeHtmlEntities(l)).filter(Boolean),
               images,
               imageDetails: sanitized.images,
               thumbnailUrl: selectedThumb,
@@ -716,7 +716,7 @@ export async function importBloggerPostsFromSource({
 
       const selectedThumb = selectMainThumbnailImage(candidatePool) || undefined;
 
-      const labels = (entry.category || []).map((c) => c.term || '').filter(Boolean);
+      const labels = (entry.category || []).map((c) => decodeHtmlEntities(c.term || '')).filter(Boolean);
       const entryId = entry.id?.$t?.split('.post-')[1] || entry.id?.$t || `post_${index}_${Date.now()}`;
 
       return {

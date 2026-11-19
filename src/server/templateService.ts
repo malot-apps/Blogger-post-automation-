@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { escapeHtml } from '../lib/sanitizer';
+import { decodeHtmlEntities, escapeHtml, repairNonAsciiHtmlEntities } from '../lib/sanitizer';
 import {
   applyMetaDescriptionToTemplate,
   DEFAULT_MASTER_TEMPLATE,
@@ -31,12 +31,14 @@ export function loadMasterTemplate(): string {
   try {
     const templatePath = path.join(process.cwd(), 'templates', 'blogger-post-template.html');
     if (fs.existsSync(templatePath)) {
-      return deduplicateAdScriptsAndContainers(fs.readFileSync(templatePath, 'utf8'));
+      return repairNonAsciiHtmlEntities(
+        deduplicateAdScriptsAndContainers(fs.readFileSync(templatePath, 'utf8'))
+      );
     }
   } catch (err) {
     console.error('Error reading /templates/blogger-post-template.html:', err);
   }
-  return deduplicateAdScriptsAndContainers(DEFAULT_MASTER_TEMPLATE);
+  return repairNonAsciiHtmlEntities(deduplicateAdScriptsAndContainers(DEFAULT_MASTER_TEMPLATE));
 }
 
 /**
@@ -54,13 +56,16 @@ export function renderTemplate(
 ): string {
   const masterTemplate = loadMasterTemplate();
   const trimmed = templateString?.trim();
-  const rawTemplate =
+  const rawTemplate = repairNonAsciiHtmlEntities(
     trimmed && !isLegacyDefaultTemplate(trimmed)
       ? deduplicateAdScriptsAndContainers(trimmed)
-      : masterTemplate;
+      : masterTemplate
+  );
 
-  const escapedTitle = escapeHtml(variables.title || '');
-  const escapedCaption = escapeHtml(variables.caption || '').replace(/\n/g, '<br/>');
+  const normalizedTitle = decodeHtmlEntities(variables.title || '', { preserveNewlines: false });
+  const normalizedCaption = decodeHtmlEntities(variables.caption || '', { preserveNewlines: true });
+  const escapedTitle = escapeHtml(normalizedTitle);
+  const escapedCaption = escapeHtml(normalizedCaption).replace(/\n/g, '<br/>');
   const rawMainUrl = (variables.imageUrl || '').trim().replace(/["'<>\\\r\n]/g, '');
   const rawThumbFallback = (variables.thumbnailUrl || '').trim().replace(/["'<>\\\r\n]/g, '');
   const safeImageUrl =
@@ -86,7 +91,7 @@ export function renderTemplate(
 
   const rendered = applyMetaDescriptionToTemplate(renderedWithVars, variables.metaDescription);
   const secured = ensureMasterAdConfiguration(rendered, masterTemplate, adsSettings);
-  return ensureMainImageFirstInPostHtml(secured, safeImageUrl, variables.title);
+  return ensureMainImageFirstInPostHtml(secured, safeImageUrl, normalizedTitle);
 }
 
 /**

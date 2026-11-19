@@ -29,6 +29,7 @@ import {
   sanitizeAdsSettings,
   validateAdUrl,
 } from '@/src/lib/adsSettings';
+import { repairNonAsciiHtmlEntities } from '@/src/lib/sanitizer';
 
 const STORAGE_KEY_GEMINI = 'blogger_user_gemini_api_key';
 const STORAGE_KEY_AI_LANG = 'blogger_user_ai_language';
@@ -56,7 +57,7 @@ function TemplateSettingsDialog({
   initialTab = 'template',
 }: Omit<TemplateSettingsModalProps, 'isOpen'>) {
   const [activeTab, setActiveTab] = useState<'template' | 'ads' | 'gemini'>(initialTab);
-  const [templateText, setTemplateText] = useState(currentTemplate);
+  const [templateText, setTemplateText] = useState(() => repairNonAsciiHtmlEntities(currentTemplate));
   const [isReloading, setIsReloading] = useState(false);
 
   // Ads Settings State
@@ -150,7 +151,7 @@ function TemplateSettingsDialog({
     }
 
     setAdsError(null);
-    onSaveTemplate(templateText);
+    onSaveTemplate(repairNonAsciiHtmlEntities(templateText));
     onSaveAdsSettings(sanitizeAdsSettings(adsDraft));
 
     if (typeof window !== 'undefined') {

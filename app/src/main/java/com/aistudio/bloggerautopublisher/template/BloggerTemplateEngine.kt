@@ -1,6 +1,7 @@
 package com.aistudio.bloggerautopublisher.template
 
 import com.aistudio.bloggerautopublisher.model.AdsSettings
+import com.aistudio.bloggerautopublisher.util.HtmlEntityCodec
 import com.aistudio.bloggerautopublisher.util.ImportedHtmlSanitizer
 import com.aistudio.bloggerautopublisher.util.MainImageSelector
 import com.aistudio.bloggerautopublisher.util.ThumbnailCandidate
@@ -19,6 +20,7 @@ object BloggerTemplateEngine {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{TITLE}}</title>
+  <meta name="description" content="{{META_DESCRIPTION}}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -1541,9 +1543,60 @@ object BloggerTemplateEngine {
       }
     }
 
+    function decodeNonAsciiEntities(input) {
+      if (typeof input !== 'string' || input.indexOf('#') === -1) return input || '';
+      return input.replace(/&(?:amp;){0,3}(?:#(\d{1,7})|#x([0-9a-fA-F]{1,6}));/gi, function (m, dec, hex) {
+        const cp = dec ? parseInt(dec, 10) : parseInt(hex, 16);
+        if (!Number.isFinite(cp) || cp < 0x0100 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) || cp === 0x2028 || cp === 0x2029) {
+          return m;
+        }
+        return String.fromCodePoint(cp);
+      });
+    }
+
+    function setSafeText(el, text) {
+      if (!el) return;
+      el.textContent = decodeNonAsciiEntities(text);
+    }
+
+    function setSafeAttr(el, attrName, value) {
+      if (!el) return;
+      el.setAttribute(attrName, decodeNonAsciiEntities(value));
+    }
+
+    function repairBengaliEntitiesInUi() {
+      if (document.title && document.title.indexOf('#') !== -1) {
+        document.title = decodeNonAsciiEntities(document.title);
+      }
+      if (!document.body || !document.createTreeWalker || typeof NodeFilter === 'undefined') return;
+      try {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+        let node = walker.nextNode();
+        while (node) {
+          const parentTag = node.parentNode && node.parentNode.nodeName ? node.parentNode.nodeName.toUpperCase() : '';
+          if (parentTag !== 'SCRIPT' && parentTag !== 'STYLE' && parentTag !== 'CODE' && parentTag !== 'PRE') {
+            const val = node.nodeValue || '';
+            if (val.indexOf('#') !== -1) {
+              const decoded = decodeNonAsciiEntities(val);
+              if (decoded !== val) {
+                node.nodeValue = decoded;
+              }
+            }
+          }
+          node = walker.nextNode();
+        }
+        document.querySelectorAll('[aria-label]').forEach(function (el) {
+          const lbl = el.getAttribute('aria-label') || '';
+          if (lbl.indexOf('#') !== -1) {
+            setSafeAttr(el, 'aria-label', lbl);
+          }
+        });
+      } catch (_) {}
+    }
+
     function showLoadingState(messageText) {
       if (loadingMessage && messageText) {
-        loadingMessage.textContent = messageText;
+        setSafeText(loadingMessage, messageText);
       }
       if (playbackErrorScreen) playbackErrorScreen.style.display = 'none';
       if (playCenterGroup) playCenterGroup.classList.add('is-hidden');
@@ -1571,24 +1624,26 @@ object BloggerTemplateEngine {
 
       if (playbackFailures >= 2) {
         if (errorTitle) {
-          errorTitle.textContent = 'দুঃখিত, বারবার চেষ্টা করেও ভিডিওটি চালু করা যায়নি';
+          setSafeText(errorTitle, 'দুঃখিত, বারবার চেষ্টা করেও ভিডিওটি চালু করা যায়নি');
         }
         if (errorSubtitle) {
-          errorSubtitle.textContent =
-            'অনুগ্রহ করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করুন অথবা কিছুক্ষণ পর পুনরায় চেষ্টা করুন।';
+          setSafeText(
+            errorSubtitle,
+            'অনুগ্রহ করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করুন অথবা কিছুক্ষণ পর পুনরায় চেষ্টা করুন।'
+          );
         }
         if (retryPlayBtn) {
-          retryPlayBtn.textContent = 'পুনরায় চেষ্টা করুন';
+          setSafeText(retryPlayBtn, 'পুনরায় চেষ্টা করুন');
         }
       } else {
         if (errorTitle) {
-          errorTitle.textContent = 'ভিডিওটি লোড হতে ব্যর্থ হয়েছে';
+          setSafeText(errorTitle, 'ভিডিওটি লোড হতে ব্যর্থ হয়েছে');
         }
         if (errorSubtitle) {
-          errorSubtitle.textContent = 'সংযোগে সাময়িক ত্রুটি দেখা দিয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
+          setSafeText(errorSubtitle, 'সংযোগে সাময়িক ত্রুটি দেখা দিয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
         }
         if (retryPlayBtn) {
-          retryPlayBtn.textContent = 'আবার চেষ্টা করুন';
+          setSafeText(retryPlayBtn, 'আবার চেষ্টা করুন');
         }
       }
 
@@ -1764,6 +1819,7 @@ object BloggerTemplateEngine {
     }
 
     function init() {
+      repairBengaliEntitiesInUi();
       enforceJpgOnlyImages();
       initSmoothScrollIndicator();
       initAdGateSystem();
@@ -1995,7 +2051,7 @@ object BloggerTemplateEngine {
         adGateNotice.className = 'ad-gate-notice';
         return;
       }
-      adGateNotice.textContent = message;
+      setSafeText(adGateNotice, message);
       adGateNotice.className = 'ad-gate-notice is-visible ' + (tone || 'is-info');
     }
 
@@ -2016,8 +2072,10 @@ object BloggerTemplateEngine {
         setGateNotice('is-warning', reasonMessage);
       }
       if (adGateSafeContinueBtn) {
-        adGateSafeContinueBtn.textContent =
-          'নিরাপদভাবে ধাপ ' + toBengaliDigits(stepIndex + 1) + ' সম্পন্ন করুন';
+        setSafeText(
+          adGateSafeContinueBtn,
+          'নিরাপদভাবে ধাপ ' + toBengaliDigits(stepIndex + 1) + ' সম্পন্ন করুন'
+        );
         adGateSafeContinueBtn.style.display = 'inline-flex';
       }
     }
@@ -2026,8 +2084,10 @@ object BloggerTemplateEngine {
       adGateState.fallbackTarget = { target: target, stepIndex: stepIndex };
       if (adGateFallbackLink && target && isValidDestinationUrl(target.url)) {
         adGateFallbackLink.setAttribute('href', target.url);
-        adGateFallbackLink.textContent =
-          'সরাসরি বিজ্ঞাপন খুলুন (ধাপ ' + toBengaliDigits(stepIndex + 1) + ')';
+        setSafeText(
+          adGateFallbackLink,
+          'সরাসরি বিজ্ঞাপন খুলুন (ধাপ ' + toBengaliDigits(stepIndex + 1) + ')'
+        );
         adGateFallbackLink.style.display = 'inline-flex';
       }
       setGateNotice(
@@ -2059,18 +2119,19 @@ object BloggerTemplateEngine {
         } else {
           playIcon.classList.remove('is-just-unlocked');
         }
-        playIcon.setAttribute(
+        setSafeAttr(
+          playIcon,
           'aria-label',
           unlocked ? 'ভিডিও চালু করুন' : 'ভিডিও আনলক করতে ২টি বিজ্ঞাপন দেখুন'
         );
       }
       if (bnPlayHint) {
         if (unlocked) {
-          bnPlayHint.textContent = 'আনলক সম্পন্ন! ভিডিও চালু করতে উপরের প্লে বাটনে চাপ দিন';
+          setSafeText(bnPlayHint, 'আনলক সম্পন্ন! ভিডিও চালু করতে উপরের প্লে বাটনে চাপ দিন');
         } else if (doneCount === 1) {
-          bnPlayHint.textContent = 'বিজ্ঞাপন ১/২ সম্পন্ন — আর ১টি ধাপ বাকি';
+          setSafeText(bnPlayHint, 'বিজ্ঞাপন ১/২ সম্পন্ন — আর ১টি ধাপ বাকি');
         } else {
-          bnPlayHint.textContent = 'ভিডিও আনলক করতে নিচের ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন (০/২)';
+          setSafeText(bnPlayHint, 'ভিডিও আনলক করতে নিচের ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন (০/২)');
         }
       }
 
@@ -2088,47 +2149,57 @@ object BloggerTemplateEngine {
 
       if (adGateStatusPill) {
         if (unlocked) {
-          adGateStatusPill.textContent = '🔓 আনলক সম্পন্ন';
+          setSafeText(adGateStatusPill, '🔓 আনলক সম্পন্ন');
         } else if (verifying) {
-          adGateStatusPill.textContent = '⏳ বিজ্ঞাপন যাচাই চলছে';
+          setSafeText(adGateStatusPill, '⏳ বিজ্ঞাপন যাচাই চলছে');
         } else {
-          adGateStatusPill.textContent = '🔒 ভিডিও লক করা আছে';
+          setSafeText(adGateStatusPill, '🔒 ভিডিও লক করা আছে');
         }
       }
 
       if (adGateStepCounter) {
-        adGateStepCounter.textContent =
-          toBengaliDigits(doneCount) + '/' + toBengaliDigits(AD_GATE_CONFIG.requiredSteps) + 'টি বিজ্ঞাপন সম্পন্ন';
+        setSafeText(
+          adGateStepCounter,
+          toBengaliDigits(doneCount) + '/' + toBengaliDigits(AD_GATE_CONFIG.requiredSteps) + 'টি বিজ্ঞাপন সম্পন্ন'
+        );
       }
 
       if (adGateTitle) {
         if (unlocked) {
-          adGateTitle.textContent = 'অভিনন্দন! ভিডিওটি এখন আনলক হয়েছে';
+          setSafeText(adGateTitle, 'অভিনন্দন! ভিডিওটি এখন আনলক হয়েছে');
         } else if (doneCount === 1) {
-          adGateTitle.textContent = 'বিজ্ঞাপন ১/২ সম্পন্ন — আনলক করতে আর ১টি ধাপ বাকি';
+          setSafeText(adGateTitle, 'বিজ্ঞাপন ১/২ সম্পন্ন — আনলক করতে আর ১টি ধাপ বাকি');
         } else {
-          adGateTitle.textContent = 'ভিডিওটি দেখতে ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন';
+          setSafeText(adGateTitle, 'ভিডিওটি দেখতে ২টি বিজ্ঞাপন ধাপ সম্পন্ন করুন');
         }
       }
 
       if (adGateSubtitle) {
         if (unlocked) {
-          adGateSubtitle.textContent =
-            '২/২টি বিজ্ঞাপন সঠিকভাবে সম্পন্ন হয়েছে। এখন প্লে বাটনে চাপ দিয়ে সম্পূর্ণ ভিডিও উপভোগ করুন।';
+          setSafeText(
+            adGateSubtitle,
+            '২/২টি বিজ্ঞাপন সঠিকভাবে সম্পন্ন হয়েছে। এখন প্লে বাটনে চাপ দিয়ে সম্পূর্ণ ভিডিও উপভোগ করুন।'
+          );
         } else if (verifying && adGateState.activeVerification) {
           const secLeft = adGateState.activeVerification.remainingSec;
-          adGateSubtitle.textContent =
+          setSafeText(
+            adGateSubtitle,
             'বিজ্ঞাপন ধাপ ' +
-            toBengaliDigits(doneCount + 1) +
-            ' যাচাই হচ্ছে — আনলকের দিকে এগোতে আর ' +
-            toBengaliDigits(secLeft) +
-            ' সেকেন্ড অপেক্ষা করুন।';
+              toBengaliDigits(doneCount + 1) +
+              ' যাচাই হচ্ছে — আনলকের দিকে এগোতে আর ' +
+              toBengaliDigits(secLeft) +
+              ' সেকেন্ড অপেক্ষা করুন।'
+          );
         } else if (doneCount === 1) {
-          adGateSubtitle.textContent =
-            '১ম বিজ্ঞাপন সফলভাবে যাচাই হয়েছে। প্লে বাটনটি আনলক করতে নিচের ২য় বিজ্ঞাপনটি দেখুন।';
+          setSafeText(
+            adGateSubtitle,
+            '১ম বিজ্ঞাপন সফলভাবে যাচাই হয়েছে। প্লে বাটনটি আনলক করতে নিচের ২য় বিজ্ঞাপনটি দেখুন।'
+          );
         } else {
-          adGateSubtitle.textContent =
-            'প্রতিটি বিজ্ঞাপন দেখার পর নির্ধারিত কয়েক সেকেন্ড অপেক্ষা করলেই ভিডিওটি স্বয়ংক্রিয়ভাবে আনলক হবে।';
+          setSafeText(
+            adGateSubtitle,
+            'প্রতিটি বিজ্ঞাপন দেখার পর নির্ধারিত কয়েক সেকেন্ড অপেক্ষা করলেই ভিডিওটি স্বয়ংক্রিয়ভাবে আনলক হবে।'
+          );
         }
       }
 
@@ -2138,13 +2209,16 @@ object BloggerTemplateEngine {
         const s1Active = !s1Done && verifying;
         adGateStep1.classList.toggle('is-done', s1Done);
         adGateStep1.classList.toggle('is-active', s1Active);
-        if (adGateStep1Icon) adGateStep1Icon.textContent = s1Done ? '✓' : '১';
+        if (adGateStep1Icon) setSafeText(adGateStep1Icon, s1Done ? '✓' : '১');
         if (adGateStep1State) {
-          adGateStep1State.textContent = s1Done
-            ? 'সম্পন্ন হয়েছে ✓'
-            : s1Active
-              ? 'যাচাই চলছে...'
-              : 'প্রস্তুত (১ম বিজ্ঞাপন দেখুন)';
+          setSafeText(
+            adGateStep1State,
+            s1Done
+              ? 'সম্পন্ন হয়েছে ✓'
+              : s1Active
+                ? 'যাচাই চলছে...'
+                : 'প্রস্তুত (১ম বিজ্ঞাপন দেখুন)'
+          );
         }
       }
 
@@ -2154,15 +2228,18 @@ object BloggerTemplateEngine {
         const s2Active = doneCount === 1 && verifying;
         adGateStep2.classList.toggle('is-done', s2Done);
         adGateStep2.classList.toggle('is-active', s2Active);
-        if (adGateStep2Icon) adGateStep2Icon.textContent = s2Done ? '✓' : '২';
+        if (adGateStep2Icon) setSafeText(adGateStep2Icon, s2Done ? '✓' : '২');
         if (adGateStep2State) {
-          adGateStep2State.textContent = s2Done
-            ? 'সম্পন্ন হয়েছে ✓'
-            : s2Active
-              ? 'যাচাই চলছে...'
-              : doneCount === 1
-                ? 'প্রস্তুত (২য় বিজ্ঞাপন দেখুন)'
-                : 'ধাপ ১-এর পর প্রস্তুত হবে';
+          setSafeText(
+            adGateStep2State,
+            s2Done
+              ? 'সম্পন্ন হয়েছে ✓'
+              : s2Active
+                ? 'যাচাই চলছে...'
+                : doneCount === 1
+                  ? 'প্রস্তুত (২য় বিজ্ঞাপন দেখুন)'
+                  : 'ধাপ ১-এর পর প্রস্তুত হবে'
+          );
         }
       }
 
@@ -2174,21 +2251,23 @@ object BloggerTemplateEngine {
       // Primary Action Button
       if (adGateActionBtn) {
         if (unlocked) {
-          adGateActionBtn.textContent = 'এখনই ভিডিও চালু করুন ▶';
+          setSafeText(adGateActionBtn, 'এখনই ভিডিও চালু করুন ▶');
           adGateActionBtn.classList.add('ad-gate-btn--unlock-play');
           adGateActionBtn.disabled = false;
         } else if (verifying && adGateState.activeVerification) {
           adGateActionBtn.classList.remove('ad-gate-btn--unlock-play');
-          adGateActionBtn.textContent =
-            'যাচাই চলছে (' + toBengaliDigits(adGateState.activeVerification.remainingSec) + ' সেকেন্ড বাকি)...';
+          setSafeText(
+            adGateActionBtn,
+            'যাচাই চলছে (' + toBengaliDigits(adGateState.activeVerification.remainingSec) + ' সেকেন্ড বাকি)...'
+          );
           adGateActionBtn.disabled = true;
         } else {
           adGateActionBtn.classList.remove('ad-gate-btn--unlock-play');
           adGateActionBtn.disabled = false;
           if (doneCount === 1) {
-            adGateActionBtn.textContent = '২য় বিজ্ঞাপন দেখুন (২/২)';
+            setSafeText(adGateActionBtn, '২য় বিজ্ঞাপন দেখুন (২/২)');
           } else {
-            adGateActionBtn.textContent = '১ম বিজ্ঞাপন দেখুন (১/২)';
+            setSafeText(adGateActionBtn, '১ম বিজ্ঞাপন দেখুন (১/২)');
           }
         }
       }
@@ -2360,7 +2439,7 @@ object BloggerTemplateEngine {
         }
 
         if (adGateTimerNumber) {
-          adGateTimerNumber.textContent = toBengaliDigits(remainingSec);
+          setSafeText(adGateTimerNumber, toBengaliDigits(remainingSec));
         }
         if (adGateTimerRing) {
           const ratio = Math.min(1, elapsedMs / totalMs);
@@ -2368,13 +2447,18 @@ object BloggerTemplateEngine {
           adGateTimerRing.style.strokeDashoffset = String(offset.toFixed(2));
         }
         if (adGateTimerTitle) {
-          adGateTimerTitle.textContent =
-            'বিজ্ঞাপন ধাপ ' + toBengaliDigits(stepIndex + 1) + ' যাচাই হচ্ছে (' + toBengaliDigits(remainingSec) + ' সেকেন্ড)';
+          setSafeText(
+            adGateTimerTitle,
+            'বিজ্ঞাপন ধাপ ' + toBengaliDigits(stepIndex + 1) + ' যাচাই হচ্ছে (' + toBengaliDigits(remainingSec) + ' সেকেন্ড)'
+          );
         }
         if (adGateTimerSub) {
-          adGateTimerSub.textContent = remainingSec > 0
-            ? 'বিজ্ঞাপনটি চালু রাখুন — আর মাত্র ' + toBengaliDigits(remainingSec) + ' সেকেন্ড বাকি'
-            : 'যাচাই সম্পন্ন হয়েছে!';
+          setSafeText(
+            adGateTimerSub,
+            remainingSec > 0
+              ? 'বিজ্ঞাপনটি চালু রাখুন — আর মাত্র ' + toBengaliDigits(remainingSec) + ' সেকেন্ড বাকি'
+              : 'যাচাই সম্পন্ন হয়েছে!'
+          );
         }
 
         updateGateUi();
@@ -2959,6 +3043,15 @@ object BloggerTemplateEngine {
       border-left: 4px solid #6e8efb;
       background: rgba(0, 0, 0, 0.03);
     }
+    .imported-article-content figure {
+      margin: 1em 0;
+      text-align: center;
+    }
+    .imported-article-content figcaption {
+      font-size: 0.875em;
+      color: #555;
+      margin-top: 6px;
+    }
     .imported-article-content img {
       max-width: 100%;
       height: auto;
@@ -3094,7 +3187,9 @@ object BloggerTemplateEngine {
             }
         }
 
-        return output.replace(Regex("\\n{3,}"), "\n\n").trim()
+        return HtmlEntityCodec.repairNonAsciiHtmlEntities(
+            output.replace(Regex("\\n{3,}"), "\n\n").trim()
+        )
     }
 
     fun applyAdsSettings(
@@ -3269,13 +3364,70 @@ object BloggerTemplateEngine {
             }
         }
 
-        val safeAlt = escapeHtml(altText?.trim().orEmpty())
+        val normalizedAlt = HtmlEntityCodec.decodePlainTextEntities(
+            altText?.trim().orEmpty(),
+            preserveNewlines = false
+        )
+        val safeAlt = escapeHtml(normalizedAlt)
         val heroBlock = """<div class="separator" style="clear: both;"><a href="$cleanUrl" style="display: block; padding: 1em 0px; text-align: center;"><img alt="$safeAlt" border="0" data-original-height="1350" data-original-width="1080" height="320" src="$cleanUrl" /></a></div>"""
         return if (bodyMatch != null) {
             "${html.substring(0, bodyStartOffset)}\n  $heroBlock\n${html.substring(bodyStartOffset)}"
         } else {
             "$heroBlock\n$html"
         }
+    }
+
+    fun normalizeMetaDescription(raw: String?): String {
+        if (raw.isNullOrBlank()) return ""
+        return HtmlEntityCodec.decodePlainTextEntities(raw, preserveNewlines = false)
+            .replace(Regex("\\{\\{\\s*(TITLE|IMAGE_URL|THUMBNAIL_URL|CAPTION|PUBLISHED_DATE|META_DESCRIPTION)\\s*\\}\\}", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    fun applyMetaDescriptionToTemplate(html: String, metaDescription: String?): String {
+        val normalized = normalizeMetaDescription(metaDescription)
+        val emptyPlaceholderMetaLineRx = Regex(
+            "[ \\t]*<meta\\b(?=[^>]*\\bname\\s*=\\s*[\"']description[\"'])(?=[^>]*\\bcontent\\s*=\\s*[\"']\\s*\\{\\{META_DESCRIPTION\\}\\}\\s*[\"'])[^>]*\\/?>[ \\t]*\\r?\\n?",
+            RegexOption.IGNORE_CASE
+        )
+
+        if (normalized.isEmpty()) {
+            return html
+                .replace(emptyPlaceholderMetaLineRx, "")
+                .replace("{{META_DESCRIPTION}}", "")
+        }
+
+        val escapedMeta = escapeHtml(normalized)
+        if (html.contains("{{META_DESCRIPTION}}")) {
+            return html.replace("{{META_DESCRIPTION}}", escapedMeta)
+        }
+
+        val existingMetaDescRx = Regex("<meta\\b([^>]*\\bname\\s*=\\s*[\"']description[\"'][^>]*)>", RegexOption.IGNORE_CASE)
+        if (existingMetaDescRx.containsMatchIn(html)) {
+            return existingMetaDescRx.replaceFirst(html) { m ->
+                val full = m.value
+                val attrs = m.groupValues[1]
+                val replaced = if (Regex("\\bcontent\\s*=", RegexOption.IGNORE_CASE).containsMatchIn(attrs)) {
+                    Regex("\\bcontent\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOption.IGNORE_CASE)
+                        .replaceFirst(full, Regex.escapeReplacement("""content="$escapedMeta""""))
+                } else {
+                    """<meta$attrs content="$escapedMeta" />"""
+                }
+                Regex.escapeReplacement(replaced)
+            }
+        }
+
+        val metaTag = """<meta name="description" content="$escapedMeta" />"""
+        val titleCloseRx = Regex("</title>", RegexOption.IGNORE_CASE)
+        if (titleCloseRx.containsMatchIn(html)) {
+            return titleCloseRx.replaceFirst(html) { m -> Regex.escapeReplacement("${m.value}\n  $metaTag") }
+        }
+        val headOpenRx = Regex("<head\\b[^>]*>", RegexOption.IGNORE_CASE)
+        if (headOpenRx.containsMatchIn(html)) {
+            return headOpenRx.replaceFirst(html) { m -> Regex.escapeReplacement("${m.value}\n  $metaTag") }
+        }
+        return "$metaTag\n$html"
     }
 
     fun renderTemplate(
@@ -3285,13 +3437,16 @@ object BloggerTemplateEngine {
         thumbnailUrl: String?,
         caption: String,
         publishedDate: String? = null,
-        adsSettings: AdsSettings = AdsSettings.DEFAULT
+        adsSettings: AdsSettings = AdsSettings.DEFAULT,
+        metaDescription: String? = null
     ): String {
-        val safeTemplate = if (!template.isNullOrBlank()) {
-            template
-        } else {
-            DEFAULT_MASTER_TEMPLATE
-        }
+        val safeTemplate = HtmlEntityCodec.repairNonAsciiHtmlEntities(
+            if (!template.isNullOrBlank()) {
+                template
+            } else {
+                DEFAULT_MASTER_TEMPLATE
+            }
+        )
         val rawMain = sanitizeUrl(imageUrl)
         val rawThumb = sanitizeUrl(thumbnailUrl)
         var safeImageUrl = when {
@@ -3307,19 +3462,22 @@ object BloggerTemplateEngine {
         }
         val formattedDate = publishedDate ?: SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.US).format(Date())
 
-        val escapedTitle = escapeHtml(title)
-        val formattedCaption = escapeHtml(caption)
+        val normalizedTitle = HtmlEntityCodec.decodePlainTextEntities(title, preserveNewlines = false)
+        val normalizedCaption = HtmlEntityCodec.decodePlainTextEntities(caption, preserveNewlines = true)
+        val escapedTitle = escapeHtml(normalizedTitle)
+        val formattedCaption = escapeHtml(normalizedCaption)
             .replace("\n", "<br/>")
 
-        val rendered = safeTemplate
+        val renderedWithVars = safeTemplate
             .replace("{{TITLE}}", escapedTitle)
             .replace("{{IMAGE_URL}}", safeImageUrl)
             .replace("{{THUMBNAIL_URL}}", safeImageUrl)
             .replace("{{CAPTION}}", formattedCaption)
             .replace("{{PUBLISHED_DATE}}", formattedDate)
 
+        val rendered = applyMetaDescriptionToTemplate(renderedWithVars, metaDescription)
         val secured = ensureMasterAdConfiguration(rendered, DEFAULT_MASTER_TEMPLATE, adsSettings)
-        return ensureMainImageFirstInPostHtml(secured, safeImageUrl, title)
+        return ensureMainImageFirstInPostHtml(secured, safeImageUrl, normalizedTitle)
     }
 
     fun renderImportedTemplate(
@@ -3331,25 +3489,29 @@ object BloggerTemplateEngine {
         firstImageSrcset: String? = null,
         publishedDate: String? = null,
         sourceUrl: String? = null,
-        adsSettings: AdsSettings = AdsSettings.DEFAULT
+        adsSettings: AdsSettings = AdsSettings.DEFAULT,
+        metaDescription: String? = null
     ): String {
-        val safeTemplate = if (!template.isNullOrBlank()) {
-            deduplicateAdScriptsAndContainers(template)
-        } else {
-            DEFAULT_MASTER_TEMPLATE
-        }
+        val safeTemplate = HtmlEntityCodec.repairNonAsciiHtmlEntities(
+            if (!template.isNullOrBlank()) {
+                deduplicateAdScriptsAndContainers(template)
+            } else {
+                DEFAULT_MASTER_TEMPLATE
+            }
+        )
 
         val sanitized = ImportedHtmlSanitizer.sanitize(articleHtml, sourceUrl)
-        val escapedTitle = escapeHtml(title)
-        val plainSummary = sanitized.html
-            .replace(Regex("<[^>]*>"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        val normalizedTitle = HtmlEntityCodec.decodePlainTextEntities(title, preserveNewlines = false)
+        val escapedTitle = escapeHtml(normalizedTitle)
+        val plainSummary = HtmlEntityCodec.decodePlainTextEntities(
+            sanitized.html.replace(Regex("<[^>]*>"), " "),
+            preserveNewlines = false
+        )
         val shortSummary = escapeHtml(
             when {
                 plainSummary.length > 110 -> plainSummary.substring(0, 107).trim() + "..."
                 plainSummary.isNotEmpty() -> plainSummary
-                else -> title
+                else -> normalizedTitle
             }
         )
 
@@ -3408,6 +3570,12 @@ object BloggerTemplateEngine {
             }
         }
 
+        val normalizedFirstAlt = if (!firstImageAlt.isNullOrBlank()) {
+            HtmlEntityCodec.decodePlainTextEntities(firstImageAlt, preserveNewlines = false)
+        } else {
+            ""
+        }
+
         if (safeImageUrl.isEmpty()) {
             output = output.replace(
                 Regex("<a\\b[^>]*href=[\"']\\{\\{IMAGE_URL\\}\\}[\"'][^>]*>\\s*<img\\b[^>]*src=[\"']\\{\\{IMAGE_URL\\}\\}[\"'][^>]*>\\s*</a>", RegexOption.IGNORE_CASE),
@@ -3424,9 +3592,9 @@ object BloggerTemplateEngine {
         } else {
             output = output.replace(Regex("<img\\b([^>]*src=[\"']\\{\\{IMAGE_URL\\}\\}[\"'][^>]*)>", RegexOption.IGNORE_CASE)) { m ->
                 var updated = m.groupValues[1]
-                if (!firstImageAlt.isNullOrBlank() && Regex("\\balt=[\"']\\s*[\"']", RegexOption.IGNORE_CASE).containsMatchIn(updated)) {
+                if (normalizedFirstAlt.isNotEmpty() && Regex("\\balt=[\"']\\s*[\"']", RegexOption.IGNORE_CASE).containsMatchIn(updated)) {
                     updated = Regex("\\balt=[\"']\\s*[\"']", RegexOption.IGNORE_CASE)
-                        .replaceFirst(updated, Regex.escapeReplacement("""alt="${escapeHtml(firstImageAlt)}""""))
+                        .replaceFirst(updated, Regex.escapeReplacement("""alt="${escapeHtml(normalizedFirstAlt)}""""))
                 }
                 if (!firstImageSrcset.isNullOrBlank() && !Regex("\\bsrcset=", RegexOption.IGNORE_CASE).containsMatchIn(updated)) {
                     updated = """$updated srcset="${escapeHtml(firstImageSrcset)}""""
@@ -3435,14 +3603,19 @@ object BloggerTemplateEngine {
             }
         }
 
-        val rendered = output
+        val renderedWithVars = output
             .replace("{{TITLE}}", escapedTitle)
             .replace("{{IMAGE_URL}}", safeImageUrl)
             .replace("{{THUMBNAIL_URL}}", safeImageUrl)
             .replace("{{PUBLISHED_DATE}}", formattedDate)
 
+        val rendered = applyMetaDescriptionToTemplate(renderedWithVars, metaDescription)
         val secured = ensureMasterAdConfiguration(rendered, DEFAULT_MASTER_TEMPLATE, adsSettings)
-        return ensureMainImageFirstInPostHtml(secured, safeImageUrl, firstImageAlt ?: title)
+        return ensureMainImageFirstInPostHtml(
+            secured,
+            safeImageUrl,
+            normalizedFirstAlt.ifEmpty { normalizedTitle }
+        )
     }
 }
 
